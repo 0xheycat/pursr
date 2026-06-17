@@ -1,0 +1,22 @@
+{
+  "name": "purrfarm-m5.4-polish",
+  "base": "http://localhost:3010/farm",
+  "outDir": "./out/m54-sweep",
+  "steps": [
+    { "name": "baseline",         "shoot":  { "preset": "desktop-1280" } },
+    { "name": "cursor-pointer",   "shoot":  { "preset": "desktop-1280", "cursor": "pointer" } },
+    { "name": "grid-64",          "shoot":  { "preset": "desktop-1280", "grid": true, "grid-tile": 64 } },
+    { "name": "grid-128",         "shoot":  { "preset": "desktop-1280", "grid": true, "grid-tile": 128 } },
+    { "name": "layer-entity",     "shoot":  { "preset": "desktop-1280", "layer": "entity" } },
+    { "name": "layer-terrain",    "shoot":  { "preset": "desktop-1280", "layer": "terrain" } },
+    { "name": "no-hud",           "shoot":  { "preset": "desktop-1280", "no-hud": true } },
+    { "name": "frozen",           "shoot":  { "preset": "desktop-1280", "no-animation": true } },
+    { "name": "tablet-768",       "shoot":  { "preset": "tablet-768" } },
+    { "name": "mobile-375",       "shoot":  { "preset": "mobile-375" } },
+    { "name": "ultrawide-3440",   "shoot":  { "preset": "ultrawide-3440" } },
+    { "name": "hover-build",      "hover":  { "selector": "text=Build" } },
+    { "name": "hover-decor",      "hover":  { "selector": "text=Decor" } },
+    { "name": "frames-8",         "frames": { "count": 8, "intervalMs": 200 } },
+    { "name": "diff-vs-baseline", "diff":   { "ref": "baseline.png" } }
+  ]
+}

@@ -1,0 +1,14 @@
+# Node
+node_modules/
+npm-debug.log
+.pnpm-debug.log
+
+# purr-visual runtime artifacts
+.vqa/
+*.log
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

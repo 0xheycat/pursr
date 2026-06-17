@@ -1,0 +1,56 @@
+{
+  "name": "@purr/visual",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Visual QA & audit plugin for the browser. Capture, sweep, and review any web target with multi-viewport, layered, animated, hover, grid, and cursor states.",
+  "type": "module",
+  "bin": {
+    "purr-visual": "./bin/purr-visual.mjs"
+  },
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./plugin": "./src/plugin.js",
+    "./plugins/*": "./plugins/*.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "plugins",
+    "plans",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node bin/purr-visual.mjs",
+    "test": "node --test test",
+    "smoke": "node bin/purr-visual.mjs viewports"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "visual-qa",
+    "visual-regression",
+    "screenshot",
+    "audit",
+    "isometric",
+    "farm",
+    "playwright",
+    "purrfarm",
+    "plugin"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0"
+  },
+  "peerDependencies": {
+    "playwright-core": "*"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": {
+      "optional": true
+    }
+  }
+}

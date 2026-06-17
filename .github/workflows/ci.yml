@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Install Playwright system Chrome
+        run: npx playwright install --with-deps chromium
+      - name: Start a tiny static server
+        run: |
+          mkdir -p /tmp/site
+          echo '<!doctype html><html><body><h1>purr-visual smoke</h1><button>Click</button></body></html>' > /tmp/site/index.html
+          (cd /tmp/site && python3 -m http.server 8080 &) && sleep 2
+      - name: Probe + viewports smoke
+        run: |
+          node bin/purr-visual.mjs viewports
+          node bin/purr-visual.mjs probe http://localhost:8080/index.html
+          node bin/purr-visual.mjs shot http://localhost:8080/index.html /tmp/site/shot.png
