@@ -1,3 +1,10 @@
+## 0.7.3 (patch)
+
+**Author field added + brand/name audit.**
+
+- Added explicit `author` field to `package.json` (`{ name: "0xheycat", email: "0xheycat@gmail.com", url: "https://github.com/0xheycat" }`). Previously the maintainer was implicit (from the npm publish token), which made the npm page show no author and confused anyone trying to find the project owner.
+- Audited the entire repo (`rg heycat --no-ignore`) — every remaining occurrence is part of the canonical GitHub username `0xheycat` (badges, README, package.json metadata, git commit history). Zero leftover references to bare `heycat`.
+
 ## 0.7.2 (minor)
 
 **New `pursr check` CI command + `pursr_check` MCP tool. MCP `pursr_diff` now honors all flags. Baseline auto-derivation fix.**
