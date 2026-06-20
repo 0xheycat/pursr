@@ -606,3 +606,32 @@ test("runDiffWithAi short-circuits on missing ref when called with (url, ref, ou
   const r = await runDiffWithAi("https://example.com", "C:/__nope__ref.png", "C:/__nope__out.png", 0.1, { preset: "mobile-375" }, { apiKey: "sk-test" });
   assert.equal(r.error, "reference file not found");
 });
+
+// --- v0.7.2: runCheck ---
+
+test("runCheck returns no-baseline when no baseline exists for a url", async () => {
+  const { runCheck } = await import("../src/check.js");
+  const url = "https://__no_baseline__" + Date.now() + ".invalid/";
+  const r = await runCheck({ url, flags: { preset: "desktop-1280" }, threshold: 0.1 });
+  assert.equal(r.status, "no-baseline");
+  assert.equal(r.exitCode, 2);
+  assert.ok(r.baselineKey && r.baselineKey.id);
+});
+
+test("diffKey is stable for the same (url, viewport, flags) triple", async () => {
+  const { diffKey } = await import("../src/baseline.js");
+  const v = { width: 1280, height: 800, dpr: 1, name: "desktop-1280" };
+  const a = diffKey({ url: "https://example.com", viewport: v, flags: { preset: "desktop-1280" } });
+  const b = diffKey({ url: "https://example.com", viewport: v, flags: { preset: "desktop-1280" } });
+  assert.equal(a, b);
+  const c = diffKey({ url: "https://example.com", viewport: v, flags: { preset: "mobile-375" } });
+  assert.notEqual(a, c);
+});
+
+test("runCheck with update=true is a no-op in the no-baseline path", async () => {
+  const { runCheck } = await import("../src/check.js");
+  const url = "https://__no_baseline_update__" + Date.now() + ".invalid/";
+  const r = await runCheck({ url, flags: { preset: "desktop-1280" }, update: true });
+  assert.equal(r.status, "no-baseline");
+  assert.equal(r.exitCode, 2);
+});

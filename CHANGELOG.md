@@ -1,3 +1,40 @@
+## 0.7.2 (minor)
+
+**New `pursr check` CI command + `pursr_check` MCP tool. MCP `pursr_diff` now honors all flags. Baseline auto-derivation fix.**
+
+### Added
+
+- **`pursr check <url> [--preset ...] [--threshold 0.1] [--update] [--json]`** — the long-awaited CI exit-code command. Renders a URL at a given (url, viewport, flags) triple and diffs it against the stored baseline.
+  - Exit `0` on equal (or just-updated), `1` on diff, `2` on no-baseline, `3` on internal error.
+  - `--update` approves the current render as the new baseline in one step (no separate `pursr baseline approve` needed).
+  - `--json` flag is accepted (output is already JSON).
+  - Designed to drop into GitHub Actions / CI:
+    ```
+    - run: pursr check https://staging.example.com --preset desktop-1280 --no-animation --wait-frame 1500
+    ```
+- **`pursr_check` MCP tool** — same flow, callable from any MCP client (Codex, Claude Code, Cursor). Returns `{ status, equal, numDiff, diffPct, exitCode, baselineKey, saved, hint }` so the agent can branch on `status` ("equal" | "differ" | "size-mismatch" | "no-baseline" | "updated").
+- **`runCheck` exported from `src/index.js`** — public API for embedding check in custom plugins.
+- **Baseline auto-derivation** — `pursr baseline save <project> <png> <step>` now reads the sidecar `.json` (which `pursr shoot` always writes) to auto-fill `url`/`viewport`/`flags` and compute the correct `diffKey`. Previously you had to pass `--url` and `--meta-json` manually. `pursr baseline approve` and `pursr baseline show` got the same treatment.
+
+### Fixed
+
+- **`pursr_diff` MCP tool now honors all flags** (`--preset`, `--grid`, `--zoom`, `--pan-x`, `--pan-y`, `--no-animation`, `--wait-frame`, `--no-hud`, etc.). Previously the MCP `_diff` adapter called `runDiff(url, ref, out, threshold)` with no flags, silently dropping them. Schema expanded to match `pursr_shoot`'s flag set.
+- **`pursr_diff` MCP schema now exposes `noAnimation` and `settleMs`** so CSR apps (React/Next.js bailing out to client-side rendering) can take a stable diff. `no-animation: true` is the recommended setting for diffing any animated page.
+- **`baseDir()` in `src/baseline.js` now normalizes trailing slashes** so `http://localhost:3000/` and `http://localhost:3000` map to the same baseline folder. Without this fix, `pursr check` would say "no-baseline" even when a baseline was just saved under a different trailing-slash form.
+- **`runCheck` strips action-only flags (`update`, `threshold`, `out`, `json`, `project`) from the diffKey** so the same URL+preset+animation combination always hashes to the same id regardless of which CLI flags were passed.
+
+### Tests
+
+- Added 3 regression-guard tests for `runCheck` and `diffKey`. Suite is now 68/68 passing in ~15s.
+
+### Verified end-to-end against http://localhost:3000/ (PRED1CT, Next.js 14)
+
+- `pursr shoot ... --no-animation --wait-frame 1500` → stable baseline (192KB PNG).
+- `pursr baseline save <url> b1.png default` → auto-derived `id` from sidecar, wrote manifest with full `url`/`viewport`/`flags`.
+- `pursr check <url> --preset desktop-1280 --no-animation --wait-frame 1500` → `status: "equal", numDiff: 0, exit: 0` ✅
+- `pursr check ... --update` → approves current render, returns `status: "equal", exit: 0, approvedFrom: ...` ✅
+- All 8 MCP tools (`pursr_shoot`, `pursr_diff`, `pursr_sweep`, `pursr_frames`, `pursr_probe`, `pursr_audit`, `pursr_dom_snapshot`, `pursr_check`) work over JSON-RPC stdio against localhost:3000.
+
 ## 0.7.1 (patch)
 
 **Two bug fixes from end-to-end smoke testing.**

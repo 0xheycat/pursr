@@ -41,6 +41,7 @@ import { startHarCapture, stopHarCapture, writeHar } from "./har.js";
 import { saveAuthState, loadAuthState, listAuthStates, deleteAuthState } from "./auth.js";
 import { startWatch, matchGlob, shouldFire } from "./watch.js";
 import { runSnap, approveSnapsAsBaselines } from "./snap.js";
+import { runCheck } from "./check.js";
 import { renderSweepPdf } from "./report.js";
 import { aiDiffSummary, aiDiffSidecar } from "./ai-diff.js";
 
@@ -71,6 +72,8 @@ export {
   PursrMCPServer, loadMcpConfig, MCP_VERSION,
   // v4: baselines, sweep validation, MCP resources
   saveBaseline, loadBaseline, listBaselines, approveBaseline, diffKey, resolveBaselinePath,
+  // v0.7.2: CI visual regression check
+  runCheck,
   validateSweepPlan, registerSweepOp,
   listResources, readResource, recordResource,
   // v5: HAR capture, auth state, parallel sweep

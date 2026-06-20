@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { runProbe } from "./probe.js";
 import { runShoot } from "./shoot.js";
 import { runDiff } from "./diff.js";
+import { runCheck } from "./check.js";
 import { runSweep } from "./sweep.js";
 import { runFrames } from "./frames.js";
 import { runShootWithSidecar } from "./shoot.js";
@@ -236,14 +237,28 @@ class PursrMCPServer {
       },
       {
         name: "pursr_diff",
-        description: "Pixel-diff a URL against a reference PNG. Returns diff stats and writes diff overlay image.",
+        description: "Pixel-diff a URL against a reference PNG. Honors the same viewport/camera/animation flags as pursr_shoot. Returns diff stats and writes diff overlay image.",
         inputSchema: {
           type: "object",
           properties: {
-            url:       { type: "string", description: "URL to capture" },
-            ref:       { type: "string", description: "Reference PNG path" },
-            out:       { type: "string", description: "Diff output PNG (auto-gen if omitted)" },
-            threshold: { type: "number", description: "Pixelmatch threshold 0-1 (default 0.1)" },
+            url:           { type: "string", description: "URL to capture" },
+            ref:           { type: "string", description: "Reference PNG path" },
+            out:           { type: "string", description: "Diff output PNG (auto-gen if omitted)" },
+            threshold:     { type: "number", description: "Pixelmatch threshold 0-1 (default 0.1)" },
+            preset:        { type: "string", description: "Viewport preset" },
+            width:         { type: "number", description: "Viewport width" },
+            height:        { type: "number", description: "Viewport height" },
+            dpr:           { type: "number", description: "Device pixel ratio" },
+            full:          { type: "boolean", description: "Full-page screenshot" },
+            cursor:        { type: "string", description: "Cursor: default|pointer|grab|grabbing|crosshair|none" },
+            grid:          { type: "boolean", description: "Overlay grid" },
+            zoom:          { type: "number", description: "Camera zoom" },
+            panX:          { type: "number", description: "Camera pan X (px)" },
+            panY:          { type: "number", description: "Camera pan Y (px)" },
+            "no-animation":{ type: "boolean", description: "Freeze CSS animations for a stable diff" },
+            "wait-frame": { type: "number", description: "Wait for stable canvas frame (ms)" },
+            "no-hud":     { type: "boolean", description: "Hide header/footer/nav elements" },
+            settleMs:      { type: "number", description: "Extra settle time before screenshot (ms, default 1200)" },
           },
           required: ["url", "ref"],
         },
@@ -311,6 +326,29 @@ class PursrMCPServer {
           required: ["url"],
         },
       },
+      {
+        name: "pursr_check",
+        description: "CI visual regression check. Renders a URL and diffs against the stored baseline. Exits 0 if equal, 1 if differs, 2 if no baseline. Use update:true to approve current as new baseline.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url:       { type: "string", description: "Target URL" },
+            preset:    { type: "string", description: "Viewport preset" },
+            width:     { type: "number", description: "Viewport width" },
+            height:    { type: "number", description: "Viewport height" },
+            dpr:       { type: "number", description: "Device pixel ratio" },
+            full:      { type: "boolean", description: "Full-page screenshot" },
+            zoom:      { type: "number", description: "Camera zoom" },
+            panX:      { type: "number", description: "Camera pan X" },
+            panY:      { type: "number", description: "Camera pan Y" },
+            threshold: { type: "number", description: "Pixelmatch threshold 0-1 (default 0.1)" },
+            update:    { type: "boolean", description: "Approve current render as the new baseline" },
+            out:       { type: "string", description: "Diff output PNG path" },
+            project:   { type: "string", description: "Project key (defaults to URL origin+path)" },
+          },
+          required: ["url"],
+        },
+      },
     ];
   }
 
@@ -325,6 +363,7 @@ class PursrMCPServer {
       case "pursr_probe":        return await this._probe(args);
       case "pursr_audit":        return await this._audit(args);
       case "pursr_dom_snapshot": return await this._domSnapshot(args);
+      case "pursr_check":        return await this._check(args);
       default: throw new McpError(-32602, `Unknown tool: ${name}`);
     }
   }
@@ -370,7 +409,11 @@ class PursrMCPServer {
     const out = args.out || ref.replace(/\.png$/i, "-diff.png");
     if (out) mkdirSync(dirname(out), { recursive: true });
     const threshold = args.threshold ?? 0.1;
-    const result = await runDiff(url, ref, out, threshold);
+    const flags = {};
+    for (const [k, v] of Object.entries(args)) {
+      if (k !== "url" && k !== "ref" && k !== "out" && k !== "threshold") flags[k] = v;
+    }
+    const result = await runDiff(url, ref, out, threshold, flags);
     return [{ type: "text", text: JSON.stringify(result, null, 2) }];
   }
 
@@ -431,6 +474,23 @@ class PursrMCPServer {
     mkdirSync(dirname(out), { recursive: true });
     const result = await captureDomSnapshot({ url: args.url, out });
     return [{ type: "text", text: JSON.stringify({ out, ...result }, null, 2) }];
+  }
+
+  async _check(args) {
+    if (!args.url) throw new McpError(-32602, "Missing required: url");
+    const flags = {};
+    for (const [k, v] of Object.entries(args)) {
+      if (k !== "url" && k !== "threshold" && k !== "update" && k !== "out" && k !== "project") flags[k] = v;
+    }
+    const result = await runCheck({
+      url: args.url,
+      flags,
+      threshold: args.threshold ?? 0.1,
+      update: !!args.update,
+      out: args.out,
+      project: args.project || null,
+    });
+    return [{ type: "text", text: JSON.stringify(result, null, 2) }];
   }
 }
 

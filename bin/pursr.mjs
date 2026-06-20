@@ -205,6 +205,12 @@ await loadPlugins(pluginPaths);
           let meta = null;
           if (flags["meta-json"]) meta = JSON.parse(readFile(flags["meta-json"], "utf8"));
           else if (flags.url) meta = { url: flags.url };
+          else {
+            const sidecar = png.replace(/\.png$/i, ".json");
+            if (existsSync(sidecar)) {
+              try { meta = JSON.parse(readFile(sidecar, "utf8")); } catch { meta = null; }
+            }
+          }
           const id = flags.id || diffKey({ url: meta?.url || "", viewport: meta?.viewport, flags: meta?.flags || {} });
           const result = saveBaseline({ project, id, step, png, meta });
           console.log(JSON.stringify({ saved: true, ...result }, null, 2));
@@ -317,6 +323,18 @@ await loadPlugins(pluginPaths);
                 console.error(JSON.stringify({ approved: r.length, project: flags.baseline }));
               }
               break;
+            }
+            case "check": {
+              // pursr check <url> [--preset <name>] [--update] [--json] [--threshold 0.1] [--out <diff.png>]
+              if (!url) die("check: missing <url>");
+              const flags = parseFlags(argv.slice(4));
+              const update = !!flags.update;
+              const threshold = flags.threshold !== undefined ? Number(flags.threshold) : 0.1;
+              const { runCheck } = await import("../src/check.js");
+              const r = await runCheck({ url, flags, threshold, update, out: flags.out || null });
+              if (flags.json) console.log(JSON.stringify(r, null, 2));
+              else console.log(JSON.stringify(r, null, 2));
+              process.exit(r.exitCode || 0);
             }
             default: { die(`unknown subcommand: ${cmd}`); }
     }

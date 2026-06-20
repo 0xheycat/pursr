@@ -28,7 +28,8 @@ import { __PURSR_GET } from "./util.js";
 
 function baseDir(project) {
   const root = __PURSR_GET("PURSR_BASELINES_DIR") || join(homedir(), ".pursr", "baselines");
-  const proj = (project || "default").replace(/[^a-zA-Z0-9._-]+/g, "_");
+  // Normalize: strip trailing slashes so "http://x/" and "http://x" map to the same folder.
+  const proj = String(project || "default").replace(/\/+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "_") || "default";
   return join(root, proj);
 }
 
