@@ -41,7 +41,7 @@ function findChrome() {
   return null;
 }
 
-const BROWSER_ARGS = ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"];
+const BROWSER_ARGS = Object.freeze(["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]);
 
 export async function launch() {
   const chromium = await getChromium();

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// purr-visual CLI. Thin wrapper around src/* that mirrors the npm bin.
+// pursor CLI. Thin wrapper around src/* that mirrors the npm bin.
 
 import { VERSION } from "../src/index.js";
 import { runClick, runType, runWait, runSeq } from "../src/interact.js";
@@ -11,13 +11,16 @@ import { runHover } from "../src/hover.js";
 import { runFrames } from "../src/frames.js";
 import { runDiff } from "../src/diff.js";
 import { runSweep } from "../src/sweep.js";
-import { listViewports, resolveViewport } from "../src/viewport.js";
-import { parseFlags, asNum, asBool, readArg, makeOut, pickOutPath, nowIso } from "../src/util.js";
+import { runEveryViewport } from "../src/every-viewport.js";
+import { runAudit } from "../src/plugin-audit.js";
+import { captureDomSnapshot } from "../src/dom-snapshot.js";
+import { listViewports } from "../src/viewport.js";
+import { parseFlags, asNum, readArg, makeOut, pickOutPath } from "../src/util.js";
 import { loadPlugins, listPlugins, getFlagHelp } from "../src/plugin.js";
 
 const USAGE = `usage:
-  v1: purr-visual {probe|shot|full|eval|click|type|wait|diff|seq} <url> [...]
-  v2: purr-visual {viewports|shoot|layer|frames|hover|sweep} <...>
+  v1: pursor {probe|shot|full|eval|click|type|wait|diff|seq} <url> [...]
+  v2: pursor {viewports|shoot|layer|frames|hover|sweep} <...>
   flags: --preset <name> --width N --height N --dpr N
          --zoom 1.5 --panX 200 --panY -100
          --cursor pointer|grab|grabbing|crosshair|none
@@ -25,7 +28,7 @@ const USAGE = `usage:
          --grid --grid-tile 64 --grid-color rgba(255,0,255,0.35)
          --no-animation --wait-frame 600 --full
   @file prefix reads argv contents from file (UTF-8, newline trimmed).
-  plugins: purr-visual automatically loads built-in plugins from plugins/.
+  plugins: pursor automatically loads built-in plugins from plugins/.
   You can also pass --plugin <path> to load custom plugins (repeatable).`;
 
 function die(msg, code = 2) {
@@ -35,7 +38,7 @@ function die(msg, code = 2) {
 
 const argv = process.argv;
 const [, , cmd, a, b, c, d] = argv;
-const url = process.env.PURR_VISUAL_URL || a;
+const url = process.env.PURSOR_URL || a;
 
 // Plugin loading: scan for --plugin <path> and built-in plugins/
 const pluginPaths = [];
@@ -45,8 +48,9 @@ await loadPlugins(pluginPaths);
 (async () => {
   try {
     switch (cmd) {
+      case undefined: case "help": case "--help": case "-h": { console.log(JSON.stringify({ usage: USAGE }, null, 2)); break; }
       case "version": case "--version": case "-v": {
-        console.log(JSON.stringify({ name: "@purr/visual", version: VERSION, plugins: listPlugins() }, null, 2));
+        console.log(JSON.stringify({ name: "pursor", version: VERSION, plugins: listPlugins() }, null, 2));
         break;
       }
       case "probe": { if (!url) die("missing url"); const r = await runProbe(url); console.log(JSON.stringify(r, null, 2)); break; }
@@ -55,7 +59,7 @@ await loadPlugins(pluginPaths);
       case "eval": { if (!url) die("missing url"); const js = readArg(b); if (!js) die("eval: missing <js> (or @file)"); const out = c || makeOut("eval.png"); const r = await runEval(url, js, out); console.log(JSON.stringify(r, null, 2)); break; }
       case "click": { if (!url) die("missing url"); const sel = b; if (!sel) die("click: missing <selector>"); const out = c || makeOut(`click-${(sel||"").replace(/[^a-z0-9]+/gi, "_").slice(0, 32)}.png`); const r = await runClick(url, sel, out); console.log(JSON.stringify(r, null, 2)); break; }
       case "type": { if (!url) die("missing url"); const sel = b; const text = readArg(c); if (!sel || text === undefined) die("type: missing <selector> or <text> (text can be @file)"); const out = d || makeOut(`type-${(sel||"").replace(/[^a-z0-9]+/gi, "_").slice(0, 32)}.png`); const r = await runType(url, sel, text, out); console.log(JSON.stringify(r, null, 2)); break; }
-      case "wait": { if (!url) die("missing url"); const sel = b; if (!sel) die("wait: missing <selector>"); const t = c ? Number(c) : 30000; const r = await runWait(url, sel, t); console.log(JSON.stringify(r, null, 2)); break; }
+      case "wait": { if (!url) die("missing url"); const sel = b; if (!sel) die("wait: missing <selector>"); const t = c !== undefined ? asNum(c, 30000) : 30000; const r = await runWait(url, sel, t); console.log(JSON.stringify(r, null, 2)); break; }
       case "diff": { if (!url) die("missing url"); const ref = b; if (!ref) die("diff: missing <ref.png>"); const out = c || makeOut("diff.png"); const threshold = d !== undefined ? Number(d) : 0.1; const r = await runDiff(url, ref, out, threshold); console.log(JSON.stringify(r, null, 2)); break; }
       case "seq": { if (!url) die("missing url"); const actions = readArg(b); if (!actions) die("seq: missing <actions.json> (or @file)"); const out = c || makeOut("seq.png"); const r = await runSeq(url, actions, out); console.log(JSON.stringify(r, null, 2)); break; }
       case "viewports": { console.log(JSON.stringify(listViewports(), null, 2)); break; }
@@ -98,6 +102,29 @@ await loadPlugins(pluginPaths);
         const outDirArg = (b && !b.startsWith("--")) ? b : undefined;
         const r = await runSweep(planPath, outDirArg);
         console.log(JSON.stringify(r, null, 2));
+        break;
+      }
+      case "every-viewport": {
+        if (!url) die("missing url");
+        const outDir = (b && !b.startsWith("--")) ? b : undefined;
+        const viewports = c?.startsWith("--") ? undefined : c?.split(",");
+        const r = await runEveryViewport({ url, outDir, viewports });
+        console.log(JSON.stringify(r, null, 2));
+        break;
+      }
+      case "audit": {
+        if (!url) die("missing url");
+        const tags = (b && !b.startsWith("--")) ? b : undefined;
+        const outDir = (c && !c.startsWith("--")) ? c : undefined;
+        const r = await runAudit({ url, tags: tags?.split(",").map(t => t.trim()), outDir });
+        console.log(JSON.stringify(r, null, 2));
+        break;
+      }
+      case "dom-snapshot": case "dom": {
+        if (!url) die("missing url");
+        const out = (b && !b.startsWith("--")) ? b : undefined;
+        const r = await captureDomSnapshot({ url, out });
+        console.log(JSON.stringify({ url: r.url, title: r.title, elements: r.selectorMap?.length, domSize: r.dom?.length, out: r.url?.replace(/[^/]+$/, "") + "dom.json" }, null, 2));
         break;
       }
       default: { die(`unknown subcommand: ${cmd}`); }

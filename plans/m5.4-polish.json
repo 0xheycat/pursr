@@ -1,6 +1,6 @@
 {
-  "name": "purrfarm-m5.4-polish",
-  "base": "http://localhost:3010/farm",
+  "name": "m5.4-polish",
+  "base": "http://localhost:3010",
   "outDir": "./out/m54-sweep",
   "steps": [
     { "name": "baseline",         "shoot":  { "preset": "desktop-1280" } },

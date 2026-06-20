@@ -16,15 +16,10 @@ export const VIEWPORTS = {
 export const DEFAULT_VIEWPORT = VIEWPORTS["desktop-1280"];
 
 import { listViewportPresets } from "./plugin.js";
+import { asNum } from "./util.js";
 
 export function listViewports() {
   return Object.entries({ ...VIEWPORTS, ...listViewportPresets() }).map(([k, v]) => ({ name: k, ...v }));
-}
-
-function asNum(v, dflt) {
-  if (v === undefined || v === null) return dflt;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : dflt;
 }
 
 export function resolveViewport(flags = {}) {

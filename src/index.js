@@ -1,8 +1,8 @@
-// @purr/visual — public library API.
+// pursor — public library API.
 //
-// This is the entry point for consumers who want to embed purr-visual
+// This is the entry point for consumers who want to embed pursor
 // inside their own scripts (instead of using the CLI). The CLI in
-// bin/purr-visual.mjs is a thin wrapper around the same exports.
+// bin/pursor.mjs is a thin wrapper around the same exports.
 //
 // All capture / sweep helpers return a `Result` object: the path to the
 // PNG, a sidecar JSON metadata object, and timing info. They never throw
@@ -14,6 +14,7 @@
 
 import { runShoot } from "./shoot.js";
 import { runSweep } from "./sweep.js";
+import { runEveryViewport } from "./every-viewport.js";
 import { runFrames } from "./frames.js";
 import { runHover } from "./hover.js";
 import { runDiff } from "./diff.js";
@@ -23,17 +24,56 @@ import { runEval } from "./eval.js";
 import { runClick, runType, runWait, runSeq } from "./interact.js";
 import { listViewports, resolveViewport, VIEWPORTS } from "./viewport.js";
 import { applyCamera, waitForStableFrame } from "./overlays.js";
-import { loadPlugins, registerPlugin, listPlugins } from "./plugin.js";
+import { loadPlugins, registerPlugin, listPlugins, getSweepOp, getViewportPreset, listViewportPresets, getFlagHelp } from "./plugin.js";
+import { launch, newPage } from "./runway.js";
+import { parseFlags, asNum, asBool, nowIso, shortHash, escapeHtml, renderSweepHtml, renderEveryViewportHtml, findStepPng, readArg, makeOut } from "./util.js";
+import { resolveLocator, parseTextSelector } from "./selector.js";
+import { captureDomSnapshot, captureDomSnapshotSidecar } from "./dom-snapshot.js";
+import { runAudit } from "./plugin-audit.js";
+import { resolveHealedSelector, healStepAction } from "./selector-heal.js";
+import { writeCiOutput } from "./ci-output.js";
+import { PursorMCPServer, loadConfig as loadMcpConfig, MCP_VERSION } from "./mcp.js";
+import { createRequire } from "node:module";
+
+// Derive VERSION from package.json to prevent drift
+const __require = createRequire(import.meta.url);
+const pkg = __require("../package.json");
+const VERSION = pkg.version;
 
 export {
   // CLI-style actions
   runProbe, runShot, runEval, runClick, runType, runWait, runSeq,
-  runShoot, runFrames, runHover, runSweep, runDiff,
+  runShoot, runFrames, runHover, runSweep, runDiff, runEveryViewport,
+  // v3: audit, DOM snapshot, MCP
+  runAudit, captureDomSnapshot, captureDomSnapshotSidecar,
   // viewport + camera helpers
   listViewports, resolveViewport, VIEWPORTS,
   applyCamera, waitForStableFrame,
   // plugin system
-  loadPlugins, registerPlugin, listPlugins,
+  loadPlugins, registerPlugin, listPlugins, getSweepOp, getViewportPreset, listViewportPresets, getFlagHelp,
+  // low-level helpers (for plugin authors)
+  launch, newPage,
+  parseFlags, asNum, asBool, nowIso, shortHash, escapeHtml, renderSweepHtml, renderEveryViewportHtml, findStepPng, readArg, makeOut,
+  resolveLocator, parseTextSelector,
+  // v3: selector healing, CI output, MCP server
+  resolveHealedSelector, healStepAction,
+  writeCiOutput,
+  PursorMCPServer, loadMcpConfig, MCP_VERSION,
+  VERSION,
 };
 
-export const VERSION = "0.1.0";
+export default {
+  runProbe, runShot, runEval, runClick, runType, runWait, runSeq,
+  runShoot, runFrames, runHover, runSweep, runDiff, runEveryViewport,
+  runAudit, captureDomSnapshot, captureDomSnapshotSidecar,
+  listViewports, resolveViewport, VIEWPORTS,
+  applyCamera, waitForStableFrame,
+  loadPlugins, registerPlugin, listPlugins, getSweepOp, getViewportPreset, listViewportPresets, getFlagHelp,
+  launch, newPage,
+  parseFlags, asNum, asBool, nowIso, shortHash, escapeHtml, renderSweepHtml, renderEveryViewportHtml, findStepPng, readArg, makeOut,
+  resolveLocator, parseTextSelector,
+  resolveHealedSelector, healStepAction,
+  writeCiOutput,
+  PursorMCPServer, loadMcpConfig, MCP_VERSION,
+  VERSION,
+};

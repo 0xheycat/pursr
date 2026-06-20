@@ -1,13 +1,21 @@
 // Selector parsing + resolution. Reused by click/type/wait/hover/seq.
 
 export function parseTextSelector(rest) {
-  const m = rest.match(/^(text=)(={1,2}|~)?(.*?)(\[\d+\])?$/);
+  // text==Exact[0]  → exact match, nth 0
+  // text~regex      → regex match
+  // text=Hello      → substring match
+  let m = rest.match(/^text~\/?(.+?)\/?(\[(\d+)\])?$/);
+  if (m) {
+    const source = m[1].replace(/\\\//g, "/");
+    try {
+      return { text: new RegExp(source, "i"), exact: false, regex: true, nth: m[3] !== undefined ? Number(m[3]) : undefined };
+    } catch { return null; }
+  }
+  m = rest.match(/^text(={1,2})(.*?)(\[(\d+)\])?$/);
   if (!m) return null;
-  const exact = m[2] === "==";
-  const regex = m[2] === "~";
-  const nth = m[4] ? Number(m[4].slice(1, -1)) : undefined;
-  const text = regex ? new RegExp(m[3], "i") : m[3];
-  return { text, exact, regex, nth };
+  const exact = m[1] === "==";
+  const nth = m[3] !== undefined ? Number(m[4]) : undefined;
+  return { text: m[2], exact, regex: false, nth };
 }
 
 export async function resolveLocator(page, selector) {
@@ -18,7 +26,7 @@ export async function resolveLocator(page, selector) {
     let loc = p.exact ? page.getByText(p.text, { exact: true })
       : p.regex ? page.getByText(p.text)
       : page.getByText(p.text);
-    if (p.nth) loc = loc.nth(p.nth - 1);
+    if (p.nth !== undefined) loc = loc.nth(p.nth - 1);
     return loc;
   }
   if (selector.startsWith("role=")) {

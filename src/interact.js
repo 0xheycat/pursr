@@ -4,8 +4,11 @@ import { launch, newPage } from "./runway.js";
 import { DEFAULT_VIEWPORT } from "./viewport.js";
 import { gotoOrThrow, settle, CLICK_TIMEOUT_MS, WAIT_DEFAULT_TIMEOUT_MS } from "./overlays.js";
 import { resolveLocator } from "./selector.js";
+import { requireArg } from "./util.js";
 
 export async function runClick(url, selector, out) {
+  requireArg("url", url, "string");
+  requireArg("selector", selector, "string");
   const browser = await launch();
   try {
     const page = await newPage(browser, DEFAULT_VIEWPORT);
@@ -16,10 +19,12 @@ export async function runClick(url, selector, out) {
     await settle(page);
     if (out) await page.screenshot({ path: out, fullPage: false });
     return { ...r, url, out, selector, clicked: true };
-  } finally { await browser.close(); }
+  } finally { try { await browser.close(); } catch {} }
 }
 
 export async function runType(url, selector, text, out) {
+  requireArg("url", url, "string");
+  requireArg("selector", selector, "string");
   const browser = await launch();
   try {
     const page = await newPage(browser, DEFAULT_VIEWPORT);
@@ -31,30 +36,40 @@ export async function runType(url, selector, text, out) {
     await settle(page);
     if (out) await page.screenshot({ path: out, fullPage: false });
     return { ...r, url, out, selector, text, typed: true };
-  } finally { await browser.close(); }
+  } finally { try { await browser.close(); } catch {} }
 }
 
 export async function runWait(url, selector, timeoutMs) {
+  requireArg("url", url, "string");
+  requireArg("selector", selector, "string");
   const browser = await launch();
   try {
     const page = await newPage(browser, DEFAULT_VIEWPORT);
     const r = await gotoOrThrow(page, url);
     const loc = await resolveLocator(page, selector);
-    await loc.first().waitFor({ state: "visible", timeout: timeoutMs || WAIT_DEFAULT_TIMEOUT_MS });
-    return { ...r, url, selector, found: true, timeoutMs: timeoutMs || WAIT_DEFAULT_TIMEOUT_MS };
-  } finally { await browser.close(); }
+    const t = timeoutMs || WAIT_DEFAULT_TIMEOUT_MS;
+    try {
+      await loc.first().waitFor({ state: "visible", timeout: t });
+      return { ...r, url, selector, found: true, timeoutMs: t };
+    } catch {
+      return { ...r, url, selector, found: false, timeoutMs: t };
+    }
+  } finally { try { await browser.close(); } catch {} }
 }
 
 export async function runSeq(url, actionsJson, out) {
+  requireArg("url", url, "string");
   let actions;
   try { actions = JSON.parse(actionsJson); }
-  catch (e) { throw new Error(`invalid actions JSON: ${e.message}`); }
+  catch (e) { throw new Error(`invalid actions JSON: ${e.message}`, { cause: e }); }
   if (!Array.isArray(actions)) throw new Error("actions must be a JSON array");
+  if (!actions.length) throw new Error("actions array is empty");
   const browser = await launch();
   try {
     const page = await newPage(browser, DEFAULT_VIEWPORT);
     const r = await gotoOrThrow(page, url); await settle(page);
     const trace = [];
+    let failed = false;
     for (let i = 0; i < actions.length; i++) {
       const a = actions[i] || {};
       const step = { i, op: a.op };
@@ -85,9 +100,10 @@ export async function runSeq(url, actionsJson, out) {
             step.out = a.out; step.fullPage = !!a.fullPage; break;
           }
           case "scroll": {
-            await page.mouse.move(640, 400);
-            await page.mouse.wheel(a.x || 0, a.y || 0);
-            step.x = a.x; step.y = a.y; break;
+            const vp = page.viewportSize();
+            await page.mouse.move((vp?.width || 640) / 2, (vp?.height || 400) / 2);
+            await page.mouse.wheel(a.deltaX || 0, a.deltaY || 0);
+            step.deltaX = a.deltaX; step.deltaY = a.deltaY; break;
           }
           case "navigate": { await gotoOrThrow(page, a.url); step.url = a.url; break; }
           case "sleep": { await page.waitForTimeout(Number(a.ms ?? 1000)); step.ms = a.ms; break; }
@@ -103,13 +119,12 @@ export async function runSeq(url, actionsJson, out) {
         else await settle(page);
         step.ok = true;
       } catch (e) {
-        step.ok = false; step.error = e.message;
-        trace.push(step);
-        throw new Error(`step ${i} (${a.op}) failed: ${e.message}`);
+        step.ok = false; step.error = e.message; failed = true;
       }
       trace.push(step);
+      if (failed) break;
     }
     if (out) await page.screenshot({ path: out, fullPage: false });
-    return { ...r, url, out, steps: trace };
-  } finally { await browser.close(); }
+    return { ...r, url, out, steps: trace, failed };
+  } finally { try { await browser.close(); } catch {} }
 }

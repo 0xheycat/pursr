@@ -1,17 +1,28 @@
 {
-  "name": "@purr/visual",
+  "name": "pursor",
   "version": "0.1.0",
-  "private": true,
-  "description": "Visual QA & audit plugin for the browser. Capture, sweep, and review any web target with multi-viewport, layered, animated, hover, grid, and cursor states.",
+  "private": false,
+  "description": "Visual QA & audit & MCP for the browser. Capture, sweep, and review any web target with multi-viewport, layered, animated, hover, grid, and cursor states.",
   "type": "module",
   "bin": {
-    "purr-visual": "./bin/purr-visual.mjs"
+    "pursor": "./bin/pursor.mjs",
+    "pursor-mcp": "./bin/pursor-mcp.mjs"
   },
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js",
     "./plugin": "./src/plugin.js",
-    "./plugins/*": "./plugins/*.js"
+    "./plugins/*": "./plugins/*.js",
+    "./util": "./src/util.js",
+    "./runway": "./src/runway.js",
+    "./selector": "./src/selector.js",
+    "./overlays": "./src/overlays.js",
+    "./viewport": "./src/viewport.js",
+    "./dom-snapshot": "./src/dom-snapshot.js",
+    "./plugin-audit": "./src/plugin-audit.js",
+    "./selector-heal": "./src/selector-heal.js",
+    "./ci-output": "./src/ci-output.js",
+    "./mcp": "./src/mcp.js"
   },
   "files": [
     "bin",
@@ -22,9 +33,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "start": "node bin/purr-visual.mjs",
-    "test": "node --test test",
-    "smoke": "node bin/purr-visual.mjs viewports"
+    "start": "node bin/pursor.mjs",
+    "test": "node --test \"test/*.test.js\"",
+    "smoke": "node bin/pursor.mjs viewports"
   },
   "engines": {
     "node": ">=18"
@@ -35,13 +46,13 @@
     "screenshot",
     "audit",
     "isometric",
-    "farm",
     "playwright",
-    "purrfarm",
-    "plugin"
+    "testing",
+    "devtools"
   ],
   "license": "MIT",
   "dependencies": {
+    "axe-core": "^4.12.1",
     "pixelmatch": "^5.3.0",
     "pngjs": "^7.0.0"
   },
@@ -52,5 +63,8 @@
     "playwright-core": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "playwright-core": "^1.61.0"
   }
 }

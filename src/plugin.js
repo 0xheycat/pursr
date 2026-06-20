@@ -1,10 +1,10 @@
-// @purr/visual — plugin API.
+// pursor — plugin API.
 //
 // A plugin is a plain ES module that exports a default object with one
 // or more hook handlers. The host loads plugins from:
 //   1. The built-in `plugins/` directory (shipped with the package).
 //   2. A path passed to `loadPlugins([...paths])`.
-//   3. Any package named `@purr/visual-plugin-*` in node_modules.
+//   3. Any package named `pursor-plugin-*` in node_modules.
 //
 // Hook reference:
 //
@@ -36,14 +36,17 @@
 //   };
 
 const plugins = [];
+const registeredRefs = new Set();
 const sweepOps = new Map();
 const viewportPresets = new Map();
 const flagHelp = new Map();
 
 export function registerPlugin(p) {
   if (!p || typeof p !== "object") return;
+  if (registeredRefs.has(p)) return;
+  registeredRefs.add(p);
   plugins.push(p);
-  if (p.name) console.log(`[purr-visual] loaded plugin: ${p.name}`);
+  if (p.name) console.error(`[pursor] loaded plugin: ${p.name}`);
   if (p.viewport) {
     for (const [k, v] of Object.entries(p.viewport)) viewportPresets.set(k, v);
   }
@@ -56,12 +59,39 @@ export function registerPlugin(p) {
 }
 
 export async function loadPlugins(paths = []) {
+  if (typeof paths === "string") paths = [paths];
+  const loadedPaths = new Set();
+  // auto-load built-in plugins from plugins/ directory
+  const { readdirSync, existsSync } = await import("node:fs");
+  const { join, dirname } = await import("node:path");
+  const { fileURLToPath, pathToFileURL } = await import("node:url");
+  const selfDir = dirname(fileURLToPath(import.meta.url));
+  const pluginDir = join(selfDir, "..", "plugins");
+  if (existsSync(pluginDir)) {
+    for (const f of readdirSync(pluginDir)) {
+      if (f.endsWith(".js")) {
+        const fullPath = pathToFileURL(join(pluginDir, f)).href;
+        if (loadedPaths.has(fullPath)) continue;
+        loadedPaths.add(fullPath);
+        try {
+          const mod = await import(/* @vite-ignore */ fullPath);
+          registerPlugin(mod.default || mod);
+        } catch (e) {
+          console.error(`[pursor] failed to load built-in plugin ${f}: ${e.message}`);
+        }
+      }
+    }
+  }
+  // user-supplied plugins — resolve relative to cwd
   for (const p of paths) {
+    if (loadedPaths.has(p)) continue;
+    loadedPaths.add(p);
     try {
-      const mod = await import(/* @vite-ignore */ new URL(p, "file:///").href);
+      const resolved = pathToFileURL(join(process.cwd(), p)).href;
+      const mod = await import(/* @vite-ignore */ resolved);
       registerPlugin(mod.default || mod);
     } catch (e) {
-      console.error(`[purr-visual] failed to load plugin ${p}: ${e.message}`);
+      console.error(`[pursor] failed to load plugin ${p}: ${e.message}`);
     }
   }
   return plugins.length;

@@ -4,9 +4,11 @@ import { launch, newPage } from "./runway.js";
 import { resolveViewport } from "./viewport.js";
 import { gotoOrThrow, settle, CLICK_TIMEOUT_MS } from "./overlays.js";
 import { resolveLocator } from "./selector.js";
-import { asNum, asBool, nowIso, writeSidecar } from "./util.js";
+import { asNum, asBool, nowIso, writeSidecar, requireArg } from "./util.js";
 
 export async function runHover({ url, selector, out, flags = {} }) {
+  requireArg("url", url, "string");
+  requireArg("selector", selector, "string");
   const viewport = resolveViewport(flags);
   const browser = await launch();
   try {
@@ -20,5 +22,5 @@ export async function runHover({ url, selector, out, flags = {} }) {
     const meta = { ...r, url, out, selector, viewport, ts: nowIso() };
     if (out) await writeSidecar(meta);
     return meta;
-  } finally { await browser.close(); }
+  } finally { try { await browser.close(); } catch {} }
 }

@@ -7,43 +7,51 @@ import {
   gotoOrThrow, settle, overlayCursor, overlayGrid, hideHud,
   isolateLayer, freezeAnimation, waitForStableFrame, applyCamera,
 } from "./overlays.js";
-import { asNum, asBool, nowIso, writeSidecar } from "./util.js";
+import { asNum, asBool, nowIso, writeSidecar, requireArg } from "./util.js";
 import { runBeforeShoot, runAfterShoot } from "./plugin.js";
 
-export async function runShoot({ url, out, flags = {}, prepare }) {
+export async function runShoot({ url, out, flags = {}, prepare, browser: extBrowser }) {
+  requireArg("url", url, "string");
   const viewport = resolveViewport(flags);
-  const browser = await launch();
+  const ownBrowser = !extBrowser;
+  const browser = extBrowser || await launch();
+  const cleanups = [];
   try {
-    const page = await newPage(browser, viewport);
-    const r = await gotoOrThrow(page, url);
-    await settle(page);
+    return await (async () => {
+      const page = await newPage(browser, viewport);
+      const r = await gotoOrThrow(page, url);
+      await settle(page);
 
-    // Build a ctx object so plugins can mutate it
-    const ctx = { url, out, viewport, flags, browser, page };
+      // Build a ctx object so plugins can mutate it
+      const ctx = { url, out, viewport, flags, browser, page };
 
-    await runBeforeShoot(ctx);
+      await runBeforeShoot(ctx);
 
-    const cleanups = [];
-    cleanups.push(await freezeAnimation(page, asBool(flags["no-animation"], false)));
-    cleanups.push(await overlayCursor(page, flags.cursor || "default"));
-    if (asBool(flags.grid, false)) cleanups.push(await overlayGrid(page, { tileSize: flags["grid-tile"], color: flags["grid-color"] }));
-    if (asBool(flags["no-hud"], false)) cleanups.push(await hideHud(page));
-    cleanups.push(await isolateLayer(page, flags.layer || "all"));
-    if (typeof prepare === "function") cleanups.push(await prepare(page));
+      cleanups.push(await freezeAnimation(page, asBool(flags["no-animation"], false)));
+      cleanups.push(await overlayCursor(page, flags.cursor || "default"));
+      if (asBool(flags.grid, false)) cleanups.push(await overlayGrid(page, { tileSize: flags["grid-tile"], color: flags["grid-color"] }));
+      if (asBool(flags["no-hud"], false)) cleanups.push(await hideHud(page));
+      cleanups.push(await isolateLayer(page, flags.layer || "all"));
+      if (typeof prepare === "function") { const c = await prepare(page); if (typeof c === "function") cleanups.push(c); }
 
-    if (flags["wait-frame"]) await waitForStableFrame(page, asNum(flags["wait-frame"], 600));
+      if (flags["wait-frame"]) await waitForStableFrame(page, asNum(flags["wait-frame"], 600));
 
-    if (flags.zoom || flags.panX || flags.panY) {
-      await applyCamera(page, { zoom: asNum(flags.zoom, 1), panX: asNum(flags.panX, 0), panY: asNum(flags.panY, 0) });
-      await page.waitForTimeout(400);
-    }
+      if (flags.zoom || flags.panX || flags.panY) {
+        await applyCamera(page, { zoom: asNum(flags.zoom, 1), panX: asNum(flags.panX, 0), panY: asNum(flags.panY, 0) });
+        await page.waitForTimeout(400);
+      }
 
-    await page.screenshot({ path: out, fullPage: asBool(flags.full, false) });
-    const meta = { url, out, ts: nowIso(), status: r.status, title: r.title, viewport, flags: { ...flags } };
-    await runAfterShoot(ctx, meta);
-    return meta;
+      await page.screenshot({ path: out, fullPage: asBool(flags.full, false) });
+      const meta = { url, out, ts: nowIso(), status: r.status, title: r.title, viewport, flags: { ...flags } };
+      await runAfterShoot(ctx, meta);
+      return meta;
+    })().catch(e => ({ url, out, ts: nowIso(), error: e.message, viewport, flags: { ...flags } }));
   } finally {
-    await browser.close();
+    // Run cleanups (remove injected overlay styles)
+    for (const fn of cleanups) {
+      try { await fn(); } catch {}
+    }
+    if (ownBrowser) await browser.close();
   }
 }
 

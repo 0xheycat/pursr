@@ -1,7 +1,20 @@
-// Built-in plugin: convenience aliases for the most common visual
-// audit flags. Adds preset viewport `audit-canvas` (1280x800 @1x with
-// no device scale) and a sweep-op `full` that captures one shot at
-// every viewport preset.
+// Built-in plugin: axe-core accessibility audit.
+//
+// Adds:
+//   viewport  "audit-canvas"     — 1280x800 @1x ideal for audit screenshots
+//   sweepOp   "audit"            — run axe-core WCAG audit in a sweep plan
+//   sweepOp   "every-viewport"   — capture every viewport preset
+//
+// The audit sweep-op stores results to ctx.out/audit.json plus a
+// highlighted screenshot. This is a thin wrapper around src/plugin-audit.js
+// that exposes the same functionality through the plugin system.
+
+import { runAudit } from "../src/plugin-audit.js";
+import { launch, newPage } from "../src/runway.js";
+import { listViewports, resolveViewport } from "../src/viewport.js";
+import { runShootWithSidecar } from "../src/shoot.js";
+import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 
 export default {
   name: "audit",
@@ -11,18 +24,21 @@ export default {
   },
 
   sweepOp: {
+    // Run axe-core accessibility audit
+    "audit": async (ctx, opts) => {
+      const url = opts.url || ctx.url;
+      if (!url) throw new Error("audit: missing url");
+      const tags = opts.tags ? opts.tags.split(",").map(t => t.trim()) : undefined;
+      const outDir = opts.outDir || ctx.out?.replace(/\.png$/i, "-audit") || join(process.cwd(), `audit-${Date.now()}`);
+      const result = await runAudit({ url, tags, outDir, screenshot: opts.screenshot !== false });
+      return { url, mode: "audit", outDir, violations: result.violationSummary?.total || 0, summary: result.violationSummary };
+    },
+
+    // Capture one shot per viewport preset
     "every-viewport": async (ctx, opts) => {
-      // opts: { base: <url>?, viewports: <string[]>? }
-      const { launch, newPage } = await import("../src/runway.js");
-      const { listViewports, resolveViewport } = await import("../src/viewport.js");
-      const { runShootWithSidecar } = await import("../src/shoot.js");
-      const { join } = await import("node:path");
-      const { writeFileSync } = await import("node:fs");
       const url = opts.base || ctx.url;
       if (!url) throw new Error("every-viewport: missing base url");
-      const wanted = opts.viewports && opts.viewports.length
-        ? opts.viewports
-        : listViewports().map(v => v.name);
+      const wanted = opts.viewports?.length ? opts.viewports : listViewports().map(v => v.name);
       const dir = ctx.out.replace(/\.png$/i, "-every-viewport");
       const captures = [];
       for (const name of wanted) {

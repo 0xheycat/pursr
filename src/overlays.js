@@ -33,8 +33,11 @@ export async function overlayCursor(page, kind) {
 }
 
 export async function overlayGrid(page, opts = {}) {
-  const tile = Number(opts.tileSize) || 64;
-  const color = opts.color || "rgba(255, 0, 255, 0.35)";
+  const tile = Math.max(8, Math.min(512, Number(opts.tileSize) || 64));
+  // Sanitize color: allow only CSS-safe color tokens (hex, rgba, named)
+  const raw = (opts.color || "rgba(255, 0, 255, 0.35)").trim();
+  // Reject anything with braces, semicolons, quotes, or HTML — CSS injection guard
+  const color = /^[a-zA-Z#()\d\s,%.]+$/.test(raw) ? raw : "rgba(255, 0, 255, 0.35)";
   await page.evaluate(({ tile, color }) => {
     let s = document.getElementById("__purr_visual_grid__");
     if (s) s.remove();
@@ -52,8 +55,8 @@ export async function hideHud(page) {
   const marker = "/*purr_visual_hide_hud*/";
   const css = marker + "\n" + [
     "header, footer, nav { display: none !important; }",
-    ".hud-topbar, .bottom-nav, .farm-actionbar-position { display: none !important; }",
-    "[data-purr-visual-hud=\"hide\"] { display: none !important; }",
+    ".hud-topbar, .bottom-nav { display: none !important; }",
+    "[data-pursor-hud=\"hide\"] { display: none !important; }",
   ].join("\n");
   await page.addStyleTag({ content: css });
   return async () => {
@@ -67,7 +70,7 @@ export async function isolateLayer(page, layer) {
   // entity = canvas only (game worlds typically render into <canvas>)
   if (layer === "entity") css = "[class*=\"bottom\"], [class*=\"hud\"], [class*=\"nav\"], [class*=\"bar\"], [class*=\"companion\"] { display: none !important; }";
   else if (layer === "terrain") css = "canvas { display: none !important; }";
-  else if (layer === "hud") css = "canvas { display: none !important; }";
+  else if (layer === "hud") css = "[class*=\"hud\"], [class*=\"nav\"], [class*=\"bar\"] { display: none !important; }";
   else if (layer === "ui") css = "canvas, header, footer, main > nav { display: none !important; }";
   else throw new Error("unknown layer: " + layer);
   const marker = `/*purr_visual_layer_${layer}*/`;
@@ -87,21 +90,48 @@ export async function freezeAnimation(page, freeze) {
 }
 
 export async function waitForStableFrame(page, ms) {
+  if (!ms || ms <= 0) return;
   const hard = 8000;
   const t0 = Date.now();
   let lastHash = null, lastChange = Date.now();
   while (Date.now() - t0 < hard) {
-    const h = await page.evaluate(() => {
-      const c = document.querySelector("canvas");
-      if (!c) return null;
-      const ctx = c.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return null;
-      try {
-        const d = ctx.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 32, 32).data;
-        let acc = 0; for (let i = 0; i < d.length; i += 64) acc = (acc * 31 + d[i]) | 0;
-        return acc.toString(36);
-      } catch (e) { return null; }
-    });
+    let h;
+    try {
+      h = await page.evaluate(() => {
+        const c = document.querySelector("canvas");
+        if (!c) return null;
+        // Prefer WebGL context (common in game canvases), fall back to 2D
+        let ctx, type;
+        try {
+          ctx = c.getContext("webgl2", { willReadFrequently: false }) || c.getContext("webgl");
+          if (ctx) type = "webgl";
+        } catch {}
+        if (!ctx) {
+          try { ctx = c.getContext("2d", { willReadFrequently: true }); type = "2d"; } catch {}
+        }
+        if (!ctx) return null;
+        if (type === "webgl") {
+          // Create a small readback for WebGL with complete framebuffer
+          const fb = ctx.createFramebuffer();
+          ctx.bindFramebuffer(ctx.FRAMEBUFFER, fb);
+          const rb = ctx.createRenderbuffer();
+          ctx.bindRenderbuffer(ctx.RENDERBUFFER, rb);
+          ctx.renderbufferStorage(ctx.RENDERBUFFER, ctx.RGBA4, 4, 4);
+          ctx.framebufferRenderbuffer(ctx.FRAMEBUFFER, ctx.COLOR_ATTACHMENT0, ctx.RENDERBUFFER, rb);
+          const d = new Uint8Array(64);
+          ctx.readPixels(0, 0, 4, 4, ctx.RGBA, ctx.UNSIGNED_BYTE, d);
+          let acc = 0; for (let i = 0; i < d.length; i += 4) acc = (acc * 31 + d[i]) | 0;
+          return acc.toString(36);
+        } else {
+          const d = ctx.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 32, 32).data;
+          let acc = 0; for (let i = 0; i < d.length; i += 64) acc = (acc * 31 + d[i]) | 0;
+          return acc.toString(36);
+        }
+      });
+    } catch {
+      // page detached mid-poll — give up
+      return;
+    }
     if (h && h === lastHash) { if (Date.now() - lastChange >= ms) return; }
     else { lastHash = h; lastChange = Date.now(); }
     await page.waitForTimeout(120);

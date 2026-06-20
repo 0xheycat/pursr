@@ -3,19 +3,19 @@
 import { launch, newPage } from "./runway.js";
 import { resolveViewport } from "./viewport.js";
 import { gotoOrThrow, settle } from "./overlays.js";
-import { asNum, nowIso } from "./util.js";
+import { asNum, nowIso, shortHash, requireArg } from "./util.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-const shortHash = (buf) => createHash("sha1").update(buf).digest("hex").slice(0, 10);
 import { join } from "node:path";
 
-export async function runFrames({ url, count, intervalMs, outDir, flags = {} }) {
+export async function runFrames({ url, count, intervalMs, outDir, flags = {}, browser: extBrowser }) {
+  requireArg("url", url, "string");
   const n = Math.max(1, Math.min(120, asNum(count, 8)));
   const stepMs = Math.max(16, asNum(intervalMs, 250));
   const dir = outDir;
   mkdirSync(dir, { recursive: true });
   const viewport = resolveViewport(flags);
-  const browser = await launch();
+  const ownBrowser = !extBrowser;
+  const browser = extBrowser || await launch();
   const meta = { url, outDir: dir, count: n, intervalMs: stepMs, viewport, files: [], ts: nowIso() };
   try {
     const page = await newPage(browser, viewport);
@@ -30,5 +30,5 @@ export async function runFrames({ url, count, intervalMs, outDir, flags = {} }) 
     }
     writeFileSync(join(dir, "frames.json"), JSON.stringify(meta, null, 2));
     return meta;
-  } finally { await browser.close(); }
+  } finally { if (ownBrowser) try { await browser.close(); } catch {} }
 }
