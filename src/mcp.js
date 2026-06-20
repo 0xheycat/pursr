@@ -1,13 +1,14 @@
-// pursor — MCP stdio server (Model Context Protocol).
+//  pursr — MCP stdio server (Model Context Protocol).
 //
 // Implements JSON-RPC 2.0 over stdio with Content-Length framing.
-// Exposes every pursor capability as an MCP tool for use by
+// Exposes every pursr capability as an MCP tool for use by
 // Claude Code, Cursor, Continue, and any other MCP host.
 //
-// Config via PURSOR_MCP_CONFIG env or ~/.pursor/mcp-config.json:
+// Config via PURSR_MCP_CONFIG env or ~/./mcp-config.json:
 //   { "plugins": ["./my-plugin.js"], "defaultOutDir": "./mcp-output" }
 
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
+import { __PURSR_GET } from "./util.js";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { runProbe } from "./probe.js";
@@ -32,12 +33,12 @@ const MCP_VERSION = "0.1.0";
 // ─── Config ──────────────────────────────────────────────────────────────
 
 function loadConfig() {
-  const envRaw = process.env.PURSOR_MCP_CONFIG;
+  const envRaw = __PURSR_GET("PURSR_MCP_CONFIG");
   if (envRaw) {
     try { return JSON.parse(envRaw); } catch { /* not JSON, treat as path */ }
     try { return JSON.parse(readFileSync(envRaw, "utf8")); } catch {}
   }
-  const configDir = join(homedir(), ".pursor");
+  const configDir = join(homedir(), ".pursr");
   const configPath = join(configDir, "mcp-config.json");
   if (existsSync(configPath)) {
     try { return JSON.parse(readFileSync(configPath, "utf8")); } catch {}
@@ -57,7 +58,7 @@ class McpError extends Error {
 
 // ─── Server ──────────────────────────────────────────────────────────────
 
-class PursorMCPServer {
+class PursrMCPServer {
   constructor(config = {}) {
     this.config = config;
     this._buffer = Buffer.alloc(0);
@@ -67,7 +68,7 @@ class PursorMCPServer {
   }
 
   log(...args) {
-    if (this._verbose) console.error("[pursor-mcp]", ...args);
+    if (this._verbose) console.error("[pursr-mcp]", ...args);
   }
 
   async start() {
@@ -85,7 +86,7 @@ class PursorMCPServer {
     });
 
     process.on("uncaughtException", (err) => {
-      console.error("[pursor-mcp] uncaught:", err.message);
+      console.error("[pursr-mcp] uncaught:", err.message);
     });
   }
 
@@ -109,7 +110,7 @@ class PursorMCPServer {
           const msg = JSON.parse(raw);
           this._handleMessage(msg);
         } catch (e) {
-          console.error("[pursor-mcp] invalid JSON:", e.message);
+          console.error("[pursr-mcp] invalid JSON:", e.message);
         }
       } else break;
     }
@@ -127,7 +128,7 @@ class PursorMCPServer {
 
   async _handleMessage(msg) {
     if (!msg || msg.jsonrpc !== "2.0" || !msg.method) {
-      console.error("[pursor-mcp] skipping non-JSON-RPC message");
+      console.error("[pursr-mcp] skipping non-JSON-RPC message");
       return;
     }
     const { method, id } = msg;
@@ -148,7 +149,7 @@ class PursorMCPServer {
             result: {
               protocolVersion: msg.params?.protocolVersion || "2024-11-05",
               capabilities: { tools: {} },
-              serverInfo: { name: "pursor", version: MCP_VERSION },
+              serverInfo: { name: "pursr", version: MCP_VERSION },
             },
           });
           break;
@@ -184,7 +185,7 @@ class PursorMCPServer {
       if (e instanceof McpError) {
         this._send({ jsonrpc: "2.0", id, error: { code: e.code, message: e.message } });
       } else {
-        console.error("[pursor-mcp] handler error:", e.stack || e.message);
+        console.error("[pursr-mcp] handler error:", e.stack || e.message);
         this._send({ jsonrpc: "2.0", id, error: { code: -32603, message: e.message } });
       }
     }
@@ -206,7 +207,7 @@ class PursorMCPServer {
   _toolDefs() {
     return [
       {
-        name: "pursor_shoot",
+        name: "pursr_shoot",
         description: "Capture a screenshot of a URL with full feature control (viewport, grid, layer, cursor, camera, animation freeze). Returns PNG path and sidecar metadata.",
         inputSchema: {
           type: "object",
@@ -234,7 +235,7 @@ class PursorMCPServer {
         },
       },
       {
-        name: "pursor_diff",
+        name: "pursr_diff",
         description: "Pixel-diff a URL against a reference PNG. Returns diff stats and writes diff overlay image.",
         inputSchema: {
           type: "object",
@@ -248,7 +249,7 @@ class PursorMCPServer {
         },
       },
       {
-        name: "pursor_sweep",
+        name: "pursr_sweep",
         description: "Execute a batch sweep plan (JSON file). Runs multiple capture steps sequentially, returns summary + HTML report.",
         inputSchema: {
           type: "object",
@@ -260,7 +261,7 @@ class PursorMCPServer {
         },
       },
       {
-        name: "pursor_frames",
+        name: "pursr_frames",
         description: "Capture an animation frame timeline — N screenshots at a given interval.",
         inputSchema: {
           type: "object",
@@ -274,7 +275,7 @@ class PursorMCPServer {
         },
       },
       {
-        name: "pursor_probe",
+        name: "pursr_probe",
         description: "Health-check a URL: returns HTTP status, page title, nav errors. No screenshot.",
         inputSchema: {
           type: "object",
@@ -285,7 +286,7 @@ class PursorMCPServer {
         },
       },
       {
-        name: "pursor_audit",
+        name: "pursr_audit",
         description: "Run axe-core WCAG accessibility audit on a URL. Returns violation summary, saves full report + highlighted screenshot.",
         inputSchema: {
           type: "object",
@@ -299,7 +300,7 @@ class PursorMCPServer {
         },
       },
       {
-        name: "pursor_dom_snapshot",
+        name: "pursr_dom_snapshot",
         description: "Full DOM snapshot: serialized HTML, computed styles per visible element, selector map (id/role/text/xpath), bounding rects. Stored as .dom.json sidecar.",
         inputSchema: {
           type: "object",
@@ -317,13 +318,13 @@ class PursorMCPServer {
 
   async _callTool(name, args) {
     switch (name) {
-      case "pursor_shoot":        return await this._shoot(args);
-      case "pursor_diff":         return await this._diff(args);
-      case "pursor_sweep":        return await this._sweep(args);
-      case "pursor_frames":       return await this._frames(args);
-      case "pursor_probe":        return await this._probe(args);
-      case "pursor_audit":        return await this._audit(args);
-      case "pursor_dom_snapshot": return await this._domSnapshot(args);
+      case "pursr_shoot":        return await this._shoot(args);
+      case "pursr_diff":         return await this._diff(args);
+      case "pursr_sweep":        return await this._sweep(args);
+      case "pursr_frames":       return await this._frames(args);
+      case "pursr_probe":        return await this._probe(args);
+      case "pursr_audit":        return await this._audit(args);
+      case "pursr_dom_snapshot": return await this._domSnapshot(args);
       default: throw new McpError(-32602, `Unknown tool: ${name}`);
     }
   }
@@ -352,7 +353,7 @@ class PursorMCPServer {
       kind: "shoot", id: Date.now().toString(36),
       name: "shoot: " + (flags.preset || "default") + " " + url,
       description: "Screenshot capture",
-      uri: "pursor://shoot/" + encodeURIComponent(url + "|" + (flags.preset || "default")),
+      uri: "pursr://shoot/" + encodeURIComponent(url + "|" + (flags.preset || "default")),
       mimeType: "image/png",
       file: out, meta: { url, flags, ts: sidecar?.ts },
     });
@@ -381,7 +382,7 @@ class PursorMCPServer {
       kind: "sweep", id: summary.name || "sweep",
       name: "sweep: " + (summary.name || "(unnamed)"),
       description: "Sweep plan: " + (summary.steps?.length || 0) + " steps",
-      uri: "pursor://sweep/" + encodeURIComponent(summary.name || "sweep"),
+      uri: "pursr://sweep/" + encodeURIComponent(summary.name || "sweep"),
       mimeType: "application/json",
       file: (summary.outDir ? join(summary.outDir, "sweep.json") : null),
       meta: { steps: summary.steps?.length || 0, ts: summary.ts },
@@ -433,4 +434,4 @@ class PursorMCPServer {
   }
 }
 
-export { PursorMCPServer, McpError, loadConfig, MCP_VERSION };
+export { PursrMCPServer, McpError, loadConfig, MCP_VERSION };

@@ -1,4 +1,4 @@
-// pursor - AI diff summary.
+//  pursr - AI diff summary.
 //
 // Sends two images (reference + current) to a vision-capable LLM and asks
 // it to describe the visual differences in plain language. This gives you
@@ -17,11 +17,12 @@
 //   const summary = await aiDiffSummary({ refPath, curPath, url, model });
 
 import { readFileSync, existsSync } from "node:fs";
+import { __PURSR_GET } from "./util.js";
 
 // Read env at call time so tests can mutate process.env between calls.
-function _defaultBase() { return process.env.PURSOR_AI_BASE_URL || process.env.ANTHROPIC_BASE_URL || "https://api.openai.com/v1"; }
-function _defaultKey()  { return process.env.PURSOR_AI_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.OPENAI_API_KEY; }
-function _defaultModel(){ return process.env.PURSOR_AI_MODEL || process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || "gpt-4o"; }
+function _defaultBase() { return __PURSR_GET("PURSR_AI_BASE_URL") || process.env.ANTHROPIC_BASE_URL || "https://api.openai.com/v1"; }
+function _defaultKey()  { return __PURSR_GET("PURSR_AI_API_KEY") || process.env.ANTHROPIC_AUTH_TOKEN || process.env.OPENAI_API_KEY; }
+function _defaultModel(){ return __PURSR_GET("PURSR_AI_MODEL") || process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || "gpt-4o"; }
 
 const SYSTEM_PROMPT = `You are a visual regression analyst. Given two screenshots of the same web page (reference vs current), produce a concise, structured report of the visual differences.
 
@@ -57,7 +58,7 @@ export async function aiDiffSummary(opts) {
   const apiKey = opts.apiKey || _defaultKey();
   const model = opts.model || _defaultModel();
   if (!apiKey) {
-    throw new Error("aiDiffSummary: no API key. Set PURSOR_AI_API_KEY, ANTHROPIC_AUTH_TOKEN, or OPENAI_API_KEY.");
+    throw new Error("aiDiffSummary: no API key. Set PURSR_$1, ANTHROPIC_AUTH_TOKEN, or OPENAI_API_KEY.");
   }
 
   const refB64 = readFileSync(opts.refPath).toString("base64");

@@ -1,4 +1,4 @@
-// pursor — component-level snapshot.
+//  pursr — component-level snapshot.
 //
 // Capture one screenshot per matched element (Percy / Chromatic style).
 // Uses Playwright's elementHandle.screenshot() to clip precisely to the

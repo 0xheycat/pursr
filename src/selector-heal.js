@@ -1,4 +1,4 @@
-// pursor — Auto-heal Selector Chain.
+//  pursr — Auto-heal Selector Chain.
 //
 // In sweep plans, a selector can be an array of fallback strategies:
 //   "click": { "selector": ["text=Login", "button[type=submit]", "#login-btn"] }

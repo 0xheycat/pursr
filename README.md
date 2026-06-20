@@ -65,7 +65,7 @@ pursr baseline save myapp shot.png home --url https://example.com
 
 # 3. Next time you run, compare against the baseline
 pursr diff https://example.com \
-  ~/.pursor/baselines/myapp/<id>/home.png \
+  ~/.pursr/baselines/myapp/<id>/home.png \
   diff.png
 
 # 4. Or: run a batched sweep + a11y audit + parallel workers
@@ -203,7 +203,7 @@ npx pursr-mcp --verbose
 | `pursr://shoot/<url|preset>` | Last screenshot PNG (image/png) |
 | `pursr://sweep/<plan-name>` | Last sweep summary JSON (application/json) |
 
-Resources are persisted to `~/.pursor/mcp/mcp-index.json` (override with `PURSOR_MCP_STATE`).
+Resources are persisted to `~/.pursr/mcp/mcp-index.json` (override with `PURSR_MCP_STATE`).
 
 ## Visual Regression Baselines
 
@@ -214,7 +214,7 @@ pursr baseline list myapp
 pursr baseline show myapp home --url https://my.app
 ```
 
-Baselines live under `~/.pursor/baselines/<project>/<id>/<step>.png` + `manifest.json`. Override with `PURSOR_BASELINES_DIR`. The `id` is a 16-char SHA1 prefix of `url|viewport|flags` so re-running a sweep maps to the same slot deterministically.
+Baselines live under `~/.pursr/baselines/<project>/<id>/<step>.png` + `manifest.json`. Override with `PURSR_BASELINES_DIR`. The `id` is a 16-char SHA1 prefix of `url|viewport|flags` so re-running a sweep maps to the same slot deterministically.
 
 ```js
 import { diffKey, saveBaseline, loadBaseline } from "pursr/baseline";
@@ -274,7 +274,7 @@ pursr auth load myapp admin --out ./round-trip.json
 pursr auth delete myapp admin
 ```
 
-States live in `~/.pursor/auth/<project>/<name>.json` (override with `PURSOR_AUTH_DIR`). The on-disk format is the standard Playwright `storageState` shape: `{ cookies, origins }`.
+States live in `~/.pursr/auth/<project>/<name>.json` (override with `PURSR_AUTH_DIR`). The on-disk format is the standard Playwright `storageState` shape: `{ cookies, origins }`.
 
 ## Parallel Sweep
 
@@ -330,7 +330,7 @@ import {
   saveBaseline, diffKey,
   startHarCapture, stopHarCapture, writeHar,
   loadAuthState,
-  PursorMCPServer, loadMcpConfig,
+  PursrMCPServer, loadMcpConfig,
   validateSweepPlan,
   listResources, readResource,
   listViewports, resolveViewport, VIEWPORTS,
@@ -355,7 +355,7 @@ import { validateSweepPlan } from "pursr/sweep-schema";
 import { startHarCapture, stopHarCapture } from "pursr/har";
 import { saveAuthState, loadAuthState } from "pursr/auth";
 import { listResources, readResource } from "pursr/mcp-resources";
-import { PursorMCPServer } from "pursr/mcp";
+import { PursrMCPServer } from "pursr/mcp";
 ```
 
 ## Plugins
@@ -416,11 +416,11 @@ npm install --save-dev playwright-core
 npm test
 ```
 
-`npm test` runs 60 unit + integration tests (Node's built-in test runner, zero test deps). Coverage includes: viewport resolution, flag parsing, selector parsing, HTML escaping, hashing, baseline storage, sweep-plan validation, MCP resources, HAR 1.2 shape, auth state, and end-to-end CLI smoke tests.
+`npm test` runs 63 unit + integration tests (Node's built-in test runner, zero test deps). Coverage includes: viewport resolution, flag parsing, selector parsing, HTML escaping, hashing, baseline storage, sweep-plan validation, MCP resources, HAR 1.2 shape, auth state, and end-to-end CLI smoke tests.
 
 ```
-src/           - 27 modules
-test/          - 60 tests, 0 failures
+src/           - 29 modules
+test/          - 63 tests, 0 failures
 plugins/       - 2 built-in plugins, auto-loaded
 ```
 

@@ -1,10 +1,10 @@
-// pursor — DOM Snapshot + CSSOM + Selector Map.
+//  pursr — DOM Snapshot + CSSOM + Selector Map.
 //
 // Every capture can optionally produce a .dom.json sidecar containing:
-//   - serialized DOM (document.documentElement.outerHTML)
-//   - computed styles for every visible element
-//   - selector map (id → role → accessible name → xpath → css selector)
-//   - viewport-relative bounding rects
+//   pursr - serialized DOM (document.documentElement.outerHTML)
+//   pursr - computed styles for every visible element
+//   pursr - selector map (id → role → accessible name → xpath → css selector)
+//   pursr - viewport-relative bounding rects
 //
 // Useful for visual regression debugging without a browser —
 // compare DOM structure directly.

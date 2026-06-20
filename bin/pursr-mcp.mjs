@@ -1,21 +1,22 @@
 #!/usr/bin/env node
-// @purr/visual — MCP server binary.
+//  pursr — MCP server binary.
 //
-// Runs the pursor MCP stdio server, exposing all capture/audit/sweep
+// Runs the pursr MCP stdio server, exposing all capture/audit/sweep
 // capabilities as MCP tools for Claude Code, Cursor, Continue, etc.
 //
-// Usage: pursor-mcp
-//   Config via PURSOR_MCP_CONFIG env or ~/.pursor/mcp-config.json
+// Usage: pursr-mcp
+//   Config via PURSR_MCP_CONFIG env or ~/.pursr/mcp-config.json
 //
-//   echo '{"url":"https://example.com"}' | pursor-mcp
+//   echo '{"url":"https://example.com"}' | pursr-mcp
 
-import { PursorMCPServer, loadConfig } from "../src/mcp.js";
+import { PursrMCPServer, loadConfig } from "../src/mcp.js";
+import { __PURSR_GET } from "../src/util.js";
 
 const config = loadConfig();
 
 // Verbose mode: --verbose or debug env
-const verbose = process.argv.includes("--verbose") || !!process.env.PURSOR_DEBUG;
+const verbose = process.argv.includes("--verbose") || !!__PURSR_GET("PURSR_DEBUG");
 config.verbose = verbose;
 
-const server = new PursorMCPServer(config);
+const server = new PursrMCPServer(config);
 await server.start();

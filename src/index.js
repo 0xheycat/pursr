@@ -1,8 +1,8 @@
-// pursor — public library API.
+//  pursr — public library API.
 //
-// This is the entry point for consumers who want to embed pursor
+// This is the entry point for consumers who want to embed pursr
 // inside their own scripts (instead of using the CLI). The CLI in
-// bin/pursor.mjs is a thin wrapper around the same exports.
+// bin/pursr.mjs is a thin wrapper around the same exports.
 //
 // All capture / sweep helpers return a `Result` object: the path to the
 // PNG, a sidecar JSON metadata object, and timing info. They never throw
@@ -32,7 +32,7 @@ import { captureDomSnapshot, captureDomSnapshotSidecar } from "./dom-snapshot.js
 import { runAudit } from "./plugin-audit.js";
 import { resolveHealedSelector, healStepAction } from "./selector-heal.js";
 import { writeCiOutput } from "./ci-output.js";
-import { PursorMCPServer, loadConfig as loadMcpConfig, MCP_VERSION } from "./mcp.js";
+import { PursrMCPServer, loadConfig as loadMcpConfig, MCP_VERSION } from "./mcp.js";
 import { createRequire } from "node:module";
 import { saveBaseline, loadBaseline, listBaselines, approveBaseline, diffKey, resolveBaselinePath } from "./baseline.js";
 import { validateSweepPlan, registerSweepOp } from "./sweep-schema.js";
@@ -68,7 +68,7 @@ export {
   // v3: selector healing, CI output, MCP server
   resolveHealedSelector, healStepAction,
   writeCiOutput,
-  PursorMCPServer, loadMcpConfig, MCP_VERSION,
+  PursrMCPServer, loadMcpConfig, MCP_VERSION,
   // v4: baselines, sweep validation, MCP resources
   saveBaseline, loadBaseline, listBaselines, approveBaseline, diffKey, resolveBaselinePath,
   validateSweepPlan, registerSweepOp,
@@ -98,7 +98,7 @@ export default {
   resolveLocator, parseTextSelector,
   resolveHealedSelector, healStepAction,
   writeCiOutput,
-  PursorMCPServer, loadMcpConfig, MCP_VERSION,
+  PursrMCPServer, loadMcpConfig, MCP_VERSION,
   saveBaseline, loadBaseline, listBaselines, approveBaseline, diffKey, resolveBaselinePath,
   validateSweepPlan, registerSweepOp,
   listResources, readResource, recordResource,

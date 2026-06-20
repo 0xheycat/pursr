@@ -1,10 +1,10 @@
-// pursor — plugin API.
+//  pursr — plugin API.
 //
 // A plugin is a plain ES module that exports a default object with one
 // or more hook handlers. The host loads plugins from:
 //   1. The built-in `plugins/` directory (shipped with the package).
 //   2. A path passed to `loadPlugins([...paths])`.
-//   3. Any package named `pursor-plugin-*` in node_modules.
+//   3. Any package named `pursr-plugin-*` in node_modules.
 //
 // Hook reference:
 //
@@ -46,7 +46,7 @@ export function registerPlugin(p) {
   if (registeredRefs.has(p)) return;
   registeredRefs.add(p);
   plugins.push(p);
-  if (p.name) console.error(`[pursor] loaded plugin: ${p.name}`);
+  if (p.name) console.error(`[pursr] loaded plugin: ${p.name}`);
   if (p.viewport) {
     for (const [k, v] of Object.entries(p.viewport)) viewportPresets.set(k, v);
   }
@@ -77,7 +77,7 @@ export async function loadPlugins(paths = []) {
           const mod = await import(/* @vite-ignore */ fullPath);
           registerPlugin(mod.default || mod);
         } catch (e) {
-          console.error(`[pursor] failed to load built-in plugin ${f}: ${e.message}`);
+          console.error(`[pursr] failed to load built-in plugin ${f}: ${e.message}`);
         }
       }
     }
@@ -91,7 +91,7 @@ export async function loadPlugins(paths = []) {
       const mod = await import(/* @vite-ignore */ resolved);
       registerPlugin(mod.default || mod);
     } catch (e) {
-      console.error(`[pursor] failed to load plugin ${p}: ${e.message}`);
+      console.error(`[pursr] failed to load plugin ${p}: ${e.message}`);
     }
   }
   return plugins.length;

@@ -176,7 +176,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 test("findStepPng strips .png and matches NN-prefixed basenames", () => {
-  const dir = join(tmpdir(), "pursor-findstep-" + Date.now());
+  const dir = join(tmpdir(), "pursr-findstep-" + Date.now());
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "00-baseline.png"), "");
   writeFileSync(join(dir, "01-grid-64.png"), "");
@@ -220,8 +220,8 @@ test("diffKey changes with url or viewport", () => {
 });
 
 test("saveBaseline + loadBaseline round-trip", () => {
-  const tmp = join(tmpdir(), "pursor-baseline-" + Date.now());
-  process.env.PURSOR_BASELINES_DIR = tmp;
+  const tmp = join(tmpdir(), "pursr-baseline-" + Date.now());
+  process.env["PURSR_BASELINES_DIR"] = tmp;
   mkdirSync(join(tmp, "p1"), { recursive: true });
   const png = join(tmp, "p1", "src.png");
   writeFileSync(png, "fake-png-bytes");
@@ -238,13 +238,13 @@ test("saveBaseline + loadBaseline round-trip", () => {
     assert.equal(list[0].id, id);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
-    delete process.env.PURSOR_BASELINES_DIR;
+    delete process.env["PURSR_BASELINES_DIR"];
   }
 });
 
 test("approveBaseline overwrites existing baseline", () => {
-  const tmp = join(tmpdir(), "pursor-baseline-" + Date.now() + "-a");
-  process.env.PURSOR_BASELINES_DIR = tmp;
+  const tmp = join(tmpdir(), "pursr-baseline-" + Date.now() + "-a");
+  process.env["PURSR_BASELINES_DIR"] = tmp;
   mkdirSync(tmp, { recursive: true });
   const png1 = join(tmp, "v1.png");
   const png2 = join(tmp, "v2.png");
@@ -259,7 +259,7 @@ test("approveBaseline overwrites existing baseline", () => {
     assert.equal(loaded.size, "v2-larger".length);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
-    delete process.env.PURSOR_BASELINES_DIR;
+    delete process.env["PURSR_BASELINES_DIR"];
   }
 });
 
@@ -303,25 +303,25 @@ test("registerSweepOp accepts plugin op", () => {
 // --- mcp-resources.js ---
 
 test("recordResource + listResources round-trip", () => {
-  const tmp = join(tmpdir(), "pursor-mcp-" + Date.now());
-  process.env.PURSOR_MCP_STATE = tmp;
+  const tmp = join(tmpdir(), "pursr-mcp-" + Date.now());
+  process.env["PURSR_MCP_STATE"] = tmp;
   const png = join(tmp, "x.png");
   mkdirSync(tmp, { recursive: true });
   writeFileSync(png, "data");
   try {
     recordResource({
       kind: "shoot", id: "1", name: "t", description: "d",
-      uri: "pursor://shoot/x", mimeType: "image/png", file: png, meta: { ts: "2025" },
+      uri: "pursr://shoot/x", mimeType: "image/png", file: png, meta: { ts: "2025" },
     });
     const list = listResources();
-    const hit = list.find(r => r.uri === "pursor://shoot/x");
+    const hit = list.find(r => r.uri === "pursr://shoot/x");
     assert.ok(hit, "resource recorded");
-    const data = readResource("pursor://shoot/x");
+    const data = readResource("pursr://shoot/x");
     assert.ok(data);
     assert.equal(data.mimeType, "image/png");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
-    delete process.env.PURSOR_MCP_STATE;
+    delete process.env["PURSR_MCP_STATE"];
   }
 });
 
@@ -329,8 +329,8 @@ import { saveAuthState, loadAuthState, listAuthStates, deleteAuthState } from ".
 import { finalizeHar } from "../src/har.js";
 
 test("auth state save/load round-trip", () => {
-  const tmp = join(tmpdir(), "pursor-auth-" + Date.now());
-  process.env.PURSOR_AUTH_DIR = tmp;
+  const tmp = join(tmpdir(), "pursr-auth-" + Date.now());
+  process.env["PURSR_AUTH_DIR"] = tmp;
   try {
     const state = {
       cookies: [{ name: "sid", value: "abc", domain: "example.com", path: "/", expires: -1, httpOnly: true, secure: true, sameSite: "Lax" }],
@@ -349,7 +349,7 @@ test("auth state save/load round-trip", () => {
     assert.equal(loadAuthState({ project: "p1", name: "user1" }), null);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
-    delete process.env.PURSOR_AUTH_DIR;
+    delete process.env["PURSR_AUTH_DIR"];
   }
 });
 
@@ -357,7 +357,7 @@ test("finalizeHar produces a HAR 1.2 log", () => {
   // fake state with two entries
   const state = {
     started: Date.now() - 100,
-    creator: { name: "pursor", version: "0.3.0" },
+    creator: { name: "pursr", version: "0.3.0" },
     browser: { name: "chromium", version: "test" },
     pages: [],
     entries: [
@@ -367,7 +367,7 @@ test("finalizeHar produces a HAR 1.2 log", () => {
   };
   const har = finalizeHar(state);
   assert.equal(har.log.version, "1.2");
-  assert.equal(har.log.creator.name, "pursor");
+  assert.equal(har.log.creator.name, "pursr");
   assert.equal(har.log.entries.length, 2);
   assert.equal(har._meta.entryCount, 2);
   assert.ok(har._meta.finished >= har._meta.started);
@@ -480,15 +480,24 @@ test("aiDiffSummary throws when no API key", async () => {
     const ref = join(dir, "ref.png"); const cur = join(dir, "cur.png");
     writeFileSync(ref, Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
     writeFileSync(cur, Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
-    // Force no key by clearing all known vars
-    const saved = { PURSR_AI_API_KEY: process.env.PURSR_AI_API_KEY, PURSOR_AI_API_KEY: process.env.PURSOR_AI_API_KEY, OPENAI_API_KEY: process.env.OPENAI_API_KEY, ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN };
-    delete process.env.PURSR_AI_API_KEY; delete process.env.PURSOR_AI_API_KEY;
-    delete process.env.OPENAI_API_KEY; delete process.env.ANTHROPIC_AUTH_TOKEN;
+    // Force no key by clearing both new primary and legacy alias env vars
+    const _savedNew = process.env["PURSR_AI_API_KEY"];
+    const _savedOld = process.env["PURSOR_AI_API_KEY"];
+    const _savedOpenAI = process.env.OPENAI_API_KEY;
+    const _savedAnthropic = process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env["PURSR_AI_API_KEY"];
+    delete process.env["PURSOR_AI_API_KEY"];
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
     try {
       await assert.rejects(() => aiDiffSummary({ refPath: ref, curPath: cur }), /no API key/);
     } finally {
-      for (const k of Object.keys(saved)) if (saved[k] !== undefined) process.env[k] = saved[k];
+      if (_savedNew !== undefined) process.env["PURSR_AI_API_KEY"] = _savedNew;
+      if (_savedOld !== undefined) process.env["PURSOR_AI_API_KEY"] = _savedOld;
+      if (_savedOpenAI !== undefined) process.env.OPENAI_API_KEY = _savedOpenAI;
+      if (_savedAnthropic !== undefined) process.env.ANTHROPIC_AUTH_TOKEN = _savedAnthropic;
     }
+
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -536,4 +545,47 @@ test("runDiffWithAi surfaces AI error gracefully (no throw)", async () => {
     const r = await runDiffWithAi("https://example.invalid", "C:/__nope_ref__.png", "C:/__nope_out__.png", 0.1, { apiKey: "sk-test" });
     assert.ok(r.error, "should have an error");
   } finally { global.fetch = orig; }
+});
+
+// --- v0.7.0: env-var deprecation shim ---
+
+test("__PURSR_GET returns primary env var when set", async () => {
+  const { __PURSR_GET } = await import("../src/util.js");
+  process.env["PURSR_TEST_VAR"] = "primary";
+  delete process.env["PURSOR_TEST_VAR"];
+  try {
+    assert.equal(__PURSR_GET("PURSR_TEST_VAR"), "primary");
+  } finally {
+    delete process.env["PURSR_TEST_VAR"];
+  }
+});
+
+test("__PURSR_GET falls back to legacy PURSOR_* env var with one-time warn", async () => {
+  const { __PURSR_GET } = await import("../src/util.js");
+  // Capture stderr
+  const orig = process.stderr.write.bind(process.stderr);
+  const errs = [];
+  process.stderr.write = (s) => { errs.push(String(s)); return true; };
+  delete process.env["PURSR_TEST_FALLBACK"];
+  process.env["PURSOR_TEST_FALLBACK"] = "legacy-value";
+  try {
+    assert.equal(__PURSR_GET("PURSR_TEST_FALLBACK"), "legacy-value");
+    // First call warns
+    const warned = errs.some(s => s.includes("deprecated") && s.includes("PURSOR_TEST_FALLBACK"));
+    assert.ok(warned, "expected deprecation warning, got: " + errs.join(""));
+    // Second call within the same module does NOT warn again
+    errs.length = 0;
+    __PURSR_GET("PURSR_TEST_FALLBACK");
+    assert.equal(errs.length, 0, "should not re-warn");
+  } finally {
+    delete process.env["PURSOR_TEST_FALLBACK"];
+    process.stderr.write = orig;
+  }
+});
+
+test("__PURSR_GET returns undefined when neither primary nor legacy is set", async () => {
+  const { __PURSR_GET } = await import("../src/util.js");
+  delete process.env["PURSR_TEST_UNDEFINED"];
+  delete process.env["PURSOR_TEST_UNDEFINED"];
+  assert.equal(__PURSR_GET("PURSR_TEST_UNDEFINED"), undefined);
 });

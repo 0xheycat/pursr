@@ -1,28 +1,28 @@
-// pursor — HAR (HTTP Archive) capture.
+//  pursr — HAR (HTTP Archive) capture.
 //
 // Hooks page.on("request") / page.on("response") / page.on("requestfailed")
 // on an active page and produces a HAR 1.2 spec blob:
 //   { log: { version: "1.2", creator: {...}, browser: {...}, pages: [...], entries: [...] } }
 //
 // Use in code:
-//   const { startHarCapture, stopHarCapture } = await import("pursor/har");
+//   const { startHarCapture, stopHarCapture } = await import("pursr/har");
 //   const har = await startHarCapture(page);
 //   await page.goto(url);
 //   await stopHarCapture(page);  // returns the HAR object
 //
 // Or via CLI/sweep:
-//   pursor shoot <url> --har ./out/req.har.json
+//   pursr shoot <url> --har ./out/req.har.json
 //
 // HAR is useful for:
-//   - killing flakiness from analytics/ads/CDN by mocking responses later
-//   - inspecting what the page actually fetched during a capture
-//   - regression diffing along with visual diffs
+//   pursr - killing flakiness from analytics/ads/CDN by mocking responses later
+//   pursr - inspecting what the page actually fetched during a capture
+//   pursr - regression diffing along with visual diffs
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { nowIso } from "./util.js";
 
-const SYM = Symbol.for("pursor.har.capture");
+const SYM = Symbol.for("pursr.har.capture");
 
 function makeEntry(req, resp, startTs, endTs) {
   const url = req.url();
@@ -88,7 +88,7 @@ export async function startHarCapture(page, opts = {}) {
   const pending = new Map(); // req -> startTs
   const state = {
     started,
-    creator: { name: "pursor", version: opts.version || "0.3.0" },
+    creator: { name: "pursr", version: opts.version || "0.3.0" },
     browser: { name: "chromium", version: "playwright-core" },
     pages: [],
     entries,

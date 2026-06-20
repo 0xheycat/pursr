@@ -1,10 +1,10 @@
 // Built-in demo plugin — shows every plugin API surface.
 //
 // Serves as both a reference implementation AND a useful tool:
-//   - adds a `demo-canvas` viewport alias
-//   - adds a `nav` sweep-op that clicks each navbar link in turn
+//   pursr - adds a `demo-canvas` viewport alias
+//   pursr - adds a `nav` sweep-op that clicks each navbar link in turn
 //     and captures a screenshot per page
-//   - augments sidecar with `demo: { mode }` when `--demo-mode` flag is set
+//   pursr - augments sidecar with `demo: { mode }` when `--demo-mode` flag is set
 //
 // Copy this file as a starting point for your own plugin.
 

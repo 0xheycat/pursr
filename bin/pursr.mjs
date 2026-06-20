@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// pursor CLI. Thin wrapper around src/* that mirrors the npm bin.
+// pursr CLI. Thin wrapper around src/* that mirrors the npm bin.
 
 import { VERSION } from "../src/index.js";
 import { runClick, runType, runWait, runSeq } from "../src/interact.js";
@@ -15,7 +15,7 @@ import { runEveryViewport } from "../src/every-viewport.js";
 import { runAudit } from "../src/plugin-audit.js";
 import { captureDomSnapshot } from "../src/dom-snapshot.js";
 import { listViewports } from "../src/viewport.js";
-import { parseFlags, asNum, readArg, makeOut, pickOutPath } from "../src/util.js";
+import { parseFlags, asNum, readArg, makeOut, pickOutPath, __PURSR_GET } from "../src/util.js";
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { readFileSync as _readFileSync } from "node:fs";
@@ -23,8 +23,8 @@ const readFile = _readFileSync;
 import { loadPlugins, listPlugins, getFlagHelp } from "../src/plugin.js";
 
 const USAGE = `usage:
-  v1: pursor {probe|shot|full|eval|click|type|wait|diff|seq} <url> [...]
-  v2: pursor {viewports|shoot|layer|frames|hover|sweep} <...>
+  v1: pursr {probe|shot|full|eval|click|type|wait|diff|seq} <url> [...]
+  v2: pursr {viewports|shoot|layer|frames|hover|sweep} <...>
   flags: --preset <name> --width N --height N --dpr N
          --zoom 1.5 --panX 200 --panY -100
          --cursor pointer|grab|grabbing|crosshair|none
@@ -34,7 +34,7 @@ const USAGE = `usage:
   @file prefix reads argv contents from file (UTF-8, newline trimmed).
   report: pursr report --sweep <sweep.json> [--out <report.pdf>] [--title "..."] [--no-embed]
          diff extras: --ai [--ai-model M] [--ai-base-url U] [--ai-api-key K]
-  plugins: pursor automatically loads built-in plugins from plugins/.
+  plugins: pursr automatically loads built-in plugins from plugins/.
   You can also pass --plugin <path> to load custom plugins (repeatable).`;
 
 function die(msg, code = 2) {
@@ -44,7 +44,7 @@ function die(msg, code = 2) {
 
 const argv = process.argv;
 const [, , cmd, a, b, c, d] = argv;
-const url = process.env.PURSOR_URL || a;
+const url = __PURSR_GET("PURSR_URL") || a;
 // Top-level --plan / --out parsing for subcommands that need it before dispatch
 function _topOpts() {
   const o = {};
@@ -66,7 +66,7 @@ await loadPlugins(pluginPaths);
     switch (cmd) {
       case undefined: case "help": case "--help": case "-h": { console.log(JSON.stringify({ usage: USAGE }, null, 2)); break; }
       case "version": case "--version": case "-v": {
-        console.log(JSON.stringify({ name: "pursor", version: VERSION, plugins: listPlugins() }, null, 2));
+        console.log(JSON.stringify({ name: "pursr", version: VERSION, plugins: listPlugins() }, null, 2));
         break;
       }
       case "probe": { if (!url) die("missing url"); const r = await runProbe(url); console.log(JSON.stringify(r, null, 2)); break; }
@@ -139,7 +139,7 @@ await loadPlugins(pluginPaths);
         if (!sweepPath) die("report: missing --sweep <sweep.json>");
         if (!existsSync(sweepPath)) die("report: sweep not found: " + sweepPath);
         const outIdx = argv.indexOf("--out");
-        const outPath = outIdx >= 0 && outIdx + 1 < argv.length ? argv[outIdx + 1] : (opts.out || makeOut("report.pdf").replace(/pursor-[^-]+-shot.png$/, "report.pdf"));
+        const outPath = outIdx >= 0 && outIdx + 1 < argv.length ? argv[outIdx + 1] : (opts.out || makeOut("report.pdf").replace(/pursr-[^-]+-shot.png$/, "report.pdf"));
         if (outPath && outPath !== "-") mkdirSync(dirname(outPath), { recursive: true });
         const titleIdx = argv.indexOf("--title");
         const title = titleIdx >= 0 && titleIdx + 1 < argv.length ? argv[titleIdx + 1] : undefined;
@@ -186,7 +186,7 @@ await loadPlugins(pluginPaths);
         break;
       }
       case "baseline": {
-        // pursor baseline <sub> [...args]
+        //  baseline <sub> [...args]
         //   sub=list                    -> list baselines
         //   sub=save <project> <png> <step>  [--id <id>] [--url <u>] [--meta-json <file>]
         //   sub=approve <project> <png> <step>  [--id <id>] [--url <u>]
@@ -227,7 +227,7 @@ await loadPlugins(pluginPaths);
         break;
       }
       case "auth": {
-              // pursor auth <sub> [...args]
+              //  auth <sub> [...args]
               //   save <project> <name> --from <state.json>
               //   load <project> <name> --out <state.json>
               //   list [project]
@@ -300,7 +300,7 @@ await loadPlugins(pluginPaths);
               const sel = b; if (!sel) die("snap: missing <selector>");
               const flags = parseFlags(argv.slice(4));
               const { runSnap, approveSnapsAsBaselines } = await import("../src/snap.js");
-              const outDir = flags.out || makeOut("snaps").replace(/pursor-[^-]+-snap\.png$/, "snaps");
+              const outDir = flags.out || makeOut("snaps").replace(/pursr-[^-]+-snap\.png$/, "snaps");
               const snap = await runSnap({ url, selector: sel, outDir, name: flags.name, max: flags.max, flags });
               console.log(JSON.stringify({
                 url: snap.url,

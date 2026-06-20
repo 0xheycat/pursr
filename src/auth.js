@@ -1,15 +1,15 @@
-// pursor — auth state (browser storage state) management.
+//  pursr — auth state (browser storage state) management.
 //
 // Playwright's `storageState` is the canonical way to persist
-// cookies + localStorage between browser sessions. pursor wraps it
+// cookies + localStorage between browser sessions. pursr wraps it
 // in a small CLI/library API so users can:
 //   1. login once interactively and save the state
 //   2. reuse the saved state in any subsequent capture (CI included)
 //
 // Storage layout:
-//   ~/.pursor/auth/<project>/<name>.json
+//   ~/.pursr/auth/<project>/<name>.json
 //
-// Override with PURSOR_AUTH_DIR.
+// Override with PURSR_$1.
 //
 // Public API:
 //   saveAuthState({ project, name, state })    -> manifest + state file
@@ -18,18 +18,19 @@
 //   deleteAuthState({ project, name })         -> bool
 //
 // CLI:
-//   pursor auth save <project> <name> --from <state.json>
-//   pursor auth load <project> <name> --out <state.json>
-//   pursor auth list [project]
-//   pursor auth delete <project> <name>
+//    auth save <project> <name> --from <state.json>
+//    auth load <project> <name> --out <state.json>
+//    auth list [project]
+//    auth delete <project> <name>
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { nowIso } from "./util.js";
+import { __PURSR_GET } from "./util.js";
 
 function authRoot() {
-  return process.env.PURSOR_AUTH_DIR || join(homedir(), ".pursor", "auth");
+  return __PURSR_GET("PURSR_AUTH_DIR") || join(homedir(), ".pursr", "auth");
 }
 
 function authPath(project, name) {

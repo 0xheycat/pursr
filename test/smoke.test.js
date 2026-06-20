@@ -17,8 +17,8 @@ mkdirSync(out, { recursive: true });
 // --- static page server ---
 const staticDir = join(out, "site");
 mkdirSync(staticDir, { recursive: true });
-const html = `<!doctype html><html><head><title>pursor smoke</title></head><body style="background:#def">
-<h1>pursor smoke</h1>
+const html = `<!doctype html><html><head><title>pursr smoke</title></head><body style="background:#def">
+<h1>pursr smoke</h1>
 <button id="go">Click me</button>
 <p id="out" style="display:none">clicked</p>
 <script>
@@ -83,7 +83,7 @@ test("viewports list", async () => {
 test("probe returns status 200", async () => {
   const r = await cli(["probe", `http://localhost:${port}/`]);
   assert.equal(r.status, 200);
-  assert.equal(r.title, "pursor smoke");
+  assert.equal(r.title, "pursr smoke");
 });
 
 test("shot captures PNG", async () => {
@@ -95,7 +95,7 @@ test("shot captures PNG", async () => {
 
 test("eval returns page data", async () => {
   const r = await cli(["eval", `http://localhost:${port}/`, "document.querySelector('h1').textContent"]);
-  assert.equal(r.result, "pursor smoke");
+  assert.equal(r.result, "pursr smoke");
 });
 
 test("click returns clicked:true", async () => {

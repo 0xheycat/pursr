@@ -61,6 +61,6 @@ export async function newPage(browser, viewport, opts = {}) {
     storageState: opts.storageState || undefined,
   });
   const page = await ctx.newPage();
-  page._pursorContext = ctx;
+  page._pursrContext = ctx;
   return page;
 }

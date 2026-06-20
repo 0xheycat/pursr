@@ -1,24 +1,25 @@
-// pursor — MCP resources adapter.
+//  pursr — MCP resources adapter.
 //
 // Exposes run results as MCP resources so hosts (Claude Code, Cursor, etc.)
 // can browse, preview, and re-read captures without re-running captures.
 //
 // Resource shape (per MCP spec):
-//   uri:        pursor://<kind>/<id>
+//   uri:        pursr://<kind>/<id>
 //   name:       <human label>
 //   description: <what it is>
 //   mimeType:   image/png | application/json | text/html
 //
 // We track "recent" sweep outputs in-memory + persist an index at
-// $PURSOR_MCP_STATE/mcp-index.json so resources survive restarts.
+// $PURSR_MCP_STATE/mcp-index.json so resources survive restarts.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
 import { homedir } from "node:os";
 import { nowIso } from "./util.js";
+import { __PURSR_GET } from "./util.js";
 
 function stateDir() {
-  const root = process.env.PURSOR_MCP_STATE || join(homedir(), ".pursor", "mcp");
+  const root = __PURSR_GET("PURSR_MCP_STATE") || join(homedir(), ".pursr", "mcp");
   mkdirSync(root, { recursive: true });
   return root;
 }
@@ -59,7 +60,7 @@ export function listResources() {
         const sweepPath = join(cwd, f);
         try {
           const s = JSON.parse(readFileSync(sweepPath, "utf8"));
-          const dirUri = `pursor://sweep/${encodeURIComponent(s.name || basename(cwd))}`;
+          const dirUri = `pursr://sweep/${encodeURIComponent(s.name || basename(cwd))}`;
           if (!idx.resources.some(r => r.uri === dirUri)) {
             idx.resources.push({
               kind: "sweep", id: s.name || basename(cwd),
@@ -78,9 +79,9 @@ export function listResources() {
 
 export function readResource(uri) {
   if (typeof uri !== "string") return null;
-  if (!uri.startsWith("pursor://")) return null;
+  if (!uri.startsWith("pursr://")) return null;
   // Parse kind/id
-  const rest = uri.slice("pursor://".length);
+  const rest = uri.slice("pursr://".length);
   const [kind, ...restParts] = rest.split("/");
   const id = restParts.join("/");
   const idx = loadIndex();

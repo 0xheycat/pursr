@@ -1,4 +1,4 @@
-// pursor - PDF report generator.
+//  pursr - PDF report generator.
 //
 // Renders a sweep summary into a styled, self-contained PDF report.
 // Embeds each capture (PNG) inline so the report can be emailed/shared

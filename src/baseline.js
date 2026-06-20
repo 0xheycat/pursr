@@ -1,13 +1,13 @@
-// pursor — baseline storage for visual regression.
+//  pursr — baseline storage for visual regression.
 //
-// Baselines live under $PURSOR_BASELINES_DIR || ~/.pursor/baselines/<project>/
+// Baselines live under $PURSR_BASELINES_DIR || ~/./baselines/<project>/
 // Each baseline is keyed by a stable id derived from the URL + viewport +
 // flag set (a short hash), so re-running a sweep deterministically points
 // to the same baseline slot.
 //
 // Layout:
-//   ~/.pursor/baselines/<project>/<id>/<step>.png
-//   ~/.pursor/baselines/<project>/<id>/manifest.json   (url, viewport, flags, ts)
+//   ~/.pursr/baselines/<project>/<id>/<step>.png
+//   ~/.pursr/baselines/<project>/<id>/manifest.json   (url, viewport, flags, ts)
 //
 // Public API:
 //   resolveBaselinePath({ project, id, step }) -> { dir, file, manifest? }
@@ -17,16 +17,17 @@
 //   approveBaseline({ project, id, step, fromPng }) -> manifest path
 //   diffKey({ url, viewport, flags }) -> string  (stable id)
 //
-// CLI subcommands added: pursor baseline save/approve/list/diff-key
+// CLI subcommands added:  baseline save/approve/list/diff-key
 
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { shortHash, nowIso } from "./util.js";
+import { __PURSR_GET } from "./util.js";
 
 function baseDir(project) {
-  const root = process.env.PURSOR_BASELINES_DIR || join(homedir(), ".pursor", "baselines");
+  const root = __PURSR_GET("PURSR_BASELINES_DIR") || join(homedir(), ".pursr", "baselines");
   const proj = (project || "default").replace(/[^a-zA-Z0-9._-]+/g, "_");
   return join(root, proj);
 }

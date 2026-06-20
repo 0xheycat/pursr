@@ -1,4 +1,4 @@
-// pursor - watch mode.
+//  pursr - watch mode.
 //
 // Re-runs a shoot/sweep whenever watched files change.
 

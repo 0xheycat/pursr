@@ -2,8 +2,8 @@
 // preset in a single command. No JSON plan needed.
 //
 // Usage:
-//   pursor every-viewport https://example.com
-//   pursor every-viewport https://example.com --out ./report
+//   pursr every-viewport https://example.com
+//   pursr every-viewport https://example.com --out ./report
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

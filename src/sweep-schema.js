@@ -1,4 +1,4 @@
-// pursor — sweep plan schema validator.
+//  pursr — sweep plan schema validator.
 //
 // Validates a parsed JSON object against the sweep plan grammar used by
 // runSweep(). Returns { valid, errors } with a flat list of human-readable

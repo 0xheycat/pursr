@@ -56,7 +56,7 @@ export async function hideHud(page) {
   const css = marker + "\n" + [
     "header, footer, nav { display: none !important; }",
     ".hud-topbar, .bottom-nav { display: none !important; }",
-    "[data-pursor-hud=\"hide\"] { display: none !important; }",
+    "[data-pursr-hud=\"hide\"] { display: none !important; }",
   ].join("\n");
   await page.addStyleTag({ content: css });
   return async () => {

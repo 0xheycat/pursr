@@ -114,6 +114,6 @@ export async function runSweep(planPath, outDirArg) {
   } finally { try { await browser.close(); } catch {} }
   writeFileSync(join(dir, "sweep.json"), JSON.stringify(summary, null, 2));
   writeFileSync(join(dir, "index.html"), renderSweepHtml(summary));
-  try { writeCiOutput(summary, dir); } catch (e) { console.error("[pursor] CI output error:", e.message); }
+  try { writeCiOutput(summary, dir); } catch (e) { console.error("[pursr] CI output error:", e.message); }
   return summary;
 }
