@@ -30,12 +30,13 @@
 
 ## Why pursr?
 
-Most teams need **four separate tools** to do visual QA: a screenshot CLI, a regression diff runner, an accessibility auditor, and a way to share captures with an AI assistant. **pursr is all four** - built as a single Node.js package with:
+Most teams need **five separate tools** to do visual QA: a screenshot CLI, a regression diff runner, an accessibility auditor, a way to share captures with an AI assistant, and a way to **turn all of that into a PDF report** for stakeholders. **pursr is all five** - built as a single Node.js package with:
 
 - **A unified CLI** (`pursr`) for every capture, diff, sweep, and audit.
 - **An MCP stdio server** (`pursr-mcp`) so Claude Code, Cursor, and Continue can take screenshots, run sweeps, and inspect prior captures as MCP resources.
-- **A library** with 30+ named exports and 16 subpath modules, so you can embed it in your own tooling.
+- **A library** with 34 named exports and 18 subpath modules, so you can embed it in your own tooling.
 - **A plugin system** for custom viewports, sweep ops, and capture hooks.
+- **PDF reports + AI diff summaries** built in - render a sweep to a styled PDF or ask a vision LLM to describe the regression in plain language.
 - **Zero browser bundled** - drives your system Chrome via Playwright. No 200 MB Chromium download.
 
 ## Install
@@ -96,6 +97,8 @@ pursr sweep ./plan.json   # see plans/ for an example
 | Auth state | Playwright storageState, reuse logged-in sessions | `--auth-state admin` |
 | Plugins | custom viewports, sweep ops, before/after hooks | `pursr-plugin-*` |
 | MCP server | 7 tools + resources/list & resources/read for Claude/Cursor | `npx pursr-mcp` |
+| PDF report | render sweep.json to a styled, embedded-PNG A4 PDF | `pursr report --sweep ./sweep.json` |
+| AI diff summary | vision LLM describes the diff in plain language | `pursr diff ... --ai` |
 
 ## CLI
 
@@ -413,11 +416,11 @@ npm install --save-dev playwright-core
 npm test
 ```
 
-`npm test` runs 53 unit + integration tests (Node's built-in test runner, zero test deps). Coverage includes: viewport resolution, flag parsing, selector parsing, HTML escaping, hashing, baseline storage, sweep-plan validation, MCP resources, HAR 1.2 shape, auth state, and end-to-end CLI smoke tests.
+`npm test` runs 60 unit + integration tests (Node's built-in test runner, zero test deps). Coverage includes: viewport resolution, flag parsing, selector parsing, HTML escaping, hashing, baseline storage, sweep-plan validation, MCP resources, HAR 1.2 shape, auth state, and end-to-end CLI smoke tests.
 
 ```
-src/           - 25 modules
-test/          - 53 tests, 0 failures
+src/           - 27 modules
+test/          - 60 tests, 0 failures
 plugins/       - 2 built-in plugins, auto-loaded
 ```
 
@@ -431,9 +434,84 @@ plugins/       - 2 built-in plugins, auto-loaded
 - [x] Parallel sweep workers
 - [x] Watch mode (`pursr watch <url>`)
 - [x] Component-level snapshot (`pursr snap <selector>`)
-- [ ] PDF report export
+- [x] PDF report export (`pursr report --sweep`)
 - [ ] Cloud output adapters (S3 / GCS)
-- [ ] AI diff summary (vision model)
+- [x] AI diff summary (vision model, `--ai`)
+
+## PDF Report (v0.6.0)
+
+Turn any sweep summary into a styled, self-contained A4 PDF you can email, attach to a PR, or hand to a designer.
+
+```bash
+# 1. Run a sweep (writes sweep.json + index.html + per-step PNGs)
+pursr sweep ./plans/marketing.json
+
+# 2. Generate a PDF from the most recent sweep
+pursr report --sweep ./out/sweep-marketing/sweep.json --out ./out/report.pdf
+
+# Or: skip image embedding for a tiny text-only report
+pursr report --sweep ./out/sweep-marketing/sweep.json --no-embed
+```
+
+The PDF includes a colored header (pursr brand magenta), a summary stat grid (steps / passed / failed / total time), and a per-step card with: status badge, op + duration + URL, the embedded capture PNG, diff stats, audit violation count, and any error message. Page numbers in the footer.
+
+Library:
+
+```js
+import { renderSweepPdf } from "pursr/report";
+import { readFileSync } from "node:fs";
+
+const summary = JSON.parse(readFileSync("./sweep.json", "utf8"));
+const bytes = await renderSweepPdf(summary, { out: "./report.pdf" });
+console.log("wrote", bytes.length, "bytes");
+```
+
+## AI Diff Summary (v0.6.0)
+
+Add `--ai` to `pursr diff` and a vision LLM describes the differences in plain language alongside the pixel-diff percentage. Perfect for triaging a regression without opening the PNG.
+
+```bash
+# Basic
+pursr diff https://my.app ./ref.png ./out/diff.png --ai
+
+# Custom model + endpoint + key (e.g. local llama.cpp, Codex proxy, OpenAI)
+pursr diff https://my.app ./ref.png ./out/diff.png \
+  --ai --ai-model gh/gpt-5.4 \
+  --ai-base-url http://127.0.0.1:20128/v1 \
+  --ai-api-key sk-...
+```
+
+The AI summary is written to `<out>.ai.json` (or alongside the current PNG) and is also attached to the diff result object as `r.ai = { aiSummary, aiModel, aiElapsedMs, aiAt }`.
+
+Auth is picked up from these env vars (in order):
+
+```
+PURSR_AI_API_KEY  (preferred)
+PURSOR_AI_API_KEY (legacy alias)
+ANTHROPIC_AUTH_TOKEN
+OPENAI_API_KEY
+```
+
+Base URL: `PURSR_AI_BASE_URL` (falls back to `ANTHROPIC_BASE_URL` then `https://api.openai.com/v1`).
+Model:   `PURSR_AI_MODEL` (falls back to `ANTHROPIC_DEFAULT_SONNET_MODEL` then `gpt-4o`).
+
+Library:
+
+```js
+import { aiDiffSummary, aiDiffSidecar } from "pursr/ai-diff";
+
+const r = await aiDiffSummary({
+  refPath: "./ref.png",
+  curPath: "./out/diff-current.png",
+  url: "https://my.app",
+  model: "gpt-4o",
+});
+console.log(r.summary);   // markdown bullet report
+console.log(r.elapsedMs); // how long the LLM took
+
+// Or attach to a sweep step:
+const sidecar = await aiDiffSidecar({ refPath, curPath, url });
+```
 
 ## Watch Mode (v0.5.0)
 

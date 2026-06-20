@@ -9,7 +9,7 @@ import { runShot } from "../src/shot.js";
 import { runShootWithSidecar } from "../src/shoot.js";
 import { runHover } from "../src/hover.js";
 import { runFrames } from "../src/frames.js";
-import { runDiff } from "../src/diff.js";
+import { runDiff, runDiffWithAi } from "../src/diff.js";
 import { runSweep } from "../src/sweep.js";
 import { runEveryViewport } from "../src/every-viewport.js";
 import { runAudit } from "../src/plugin-audit.js";
@@ -32,6 +32,8 @@ const USAGE = `usage:
          --grid --grid-tile 64 --grid-color rgba(255,0,255,0.35)
          --no-animation --wait-frame 600 --full
   @file prefix reads argv contents from file (UTF-8, newline trimmed).
+  report: pursr report --sweep <sweep.json> [--out <report.pdf>] [--title "..."] [--no-embed]
+         diff extras: --ai [--ai-model M] [--ai-base-url U] [--ai-api-key K]
   plugins: pursor automatically loads built-in plugins from plugins/.
   You can also pass --plugin <path> to load custom plugins (repeatable).`;
 
@@ -74,7 +76,19 @@ await loadPlugins(pluginPaths);
       case "click": { if (!url) die("missing url"); const sel = b; if (!sel) die("click: missing <selector>"); const out = c || makeOut(`click-${(sel||"").replace(/[^a-z0-9]+/gi, "_").slice(0, 32)}.png`); const r = await runClick(url, sel, out); console.log(JSON.stringify(r, null, 2)); break; }
       case "type": { if (!url) die("missing url"); const sel = b; const text = readArg(c); if (!sel || text === undefined) die("type: missing <selector> or <text> (text can be @file)"); const out = d || makeOut(`type-${(sel||"").replace(/[^a-z0-9]+/gi, "_").slice(0, 32)}.png`); const r = await runType(url, sel, text, out); console.log(JSON.stringify(r, null, 2)); break; }
       case "wait": { if (!url) die("missing url"); const sel = b; if (!sel) die("wait: missing <selector>"); const t = c !== undefined ? asNum(c, 30000) : 30000; const r = await runWait(url, sel, t); console.log(JSON.stringify(r, null, 2)); break; }
-      case "diff": { if (!url) die("missing url"); const ref = b; if (!ref) die("diff: missing <ref.png>"); const out = c || makeOut("diff.png"); const threshold = d !== undefined ? Number(d) : 0.1; const r = await runDiff(url, ref, out, threshold); console.log(JSON.stringify(r, null, 2)); break; }
+      case "diff": {
+        if (!url) die("missing url"); const ref = b; if (!ref) die("diff: missing <ref.png>");
+        const out = c || makeOut("diff.png"); const threshold = d !== undefined ? Number(d) : 0.1;
+        // --ai / --ai-model / --ai-base-url / --ai-api-key
+        const useAi = argv.includes("--ai");
+        const aiModel = (() => { const i = argv.indexOf("--ai-model"); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined; })();
+        const aiBaseUrl = (() => { const i = argv.indexOf("--ai-base-url"); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined; })();
+        const aiApiKey = (() => { const i = argv.indexOf("--ai-api-key"); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined; })();
+        const r = useAi
+          ? await runDiffWithAi(url, ref, out, threshold, { model: aiModel, baseUrl: aiBaseUrl, apiKey: aiApiKey })
+          : await runDiff(url, ref, out, threshold);
+        console.log(JSON.stringify(r, null, 2)); break;
+      }
       case "seq": { if (!url) die("missing url"); const actions = readArg(b); if (!actions) die("seq: missing <actions.json> (or @file)"); const out = c || makeOut("seq.png"); const r = await runSeq(url, actions, out); console.log(JSON.stringify(r, null, 2)); break; }
       case "viewports": { console.log(JSON.stringify(listViewports(), null, 2)); break; }
       case "shoot": {
@@ -116,6 +130,24 @@ await loadPlugins(pluginPaths);
         const outDirArg = (b && !b.startsWith("--")) ? b : undefined;
         const r = await runSweep(planPath, outDirArg);
         console.log(JSON.stringify(r, null, 2));
+        break;
+      }
+      case "report": {
+        // pursr report --sweep <sweep.json> [--out report.pdf] [--title "..."]
+        const sweepIdx = argv.indexOf("--sweep");
+        const sweepPath = sweepIdx >= 0 && sweepIdx + 1 < argv.length ? argv[sweepIdx + 1] : a;
+        if (!sweepPath) die("report: missing --sweep <sweep.json>");
+        if (!existsSync(sweepPath)) die("report: sweep not found: " + sweepPath);
+        const outIdx = argv.indexOf("--out");
+        const outPath = outIdx >= 0 && outIdx + 1 < argv.length ? argv[outIdx + 1] : (opts.out || makeOut("report.pdf").replace(/pursor-[^-]+-shot.png$/, "report.pdf"));
+        if (outPath && outPath !== "-") mkdirSync(dirname(outPath), { recursive: true });
+        const titleIdx = argv.indexOf("--title");
+        const title = titleIdx >= 0 && titleIdx + 1 < argv.length ? argv[titleIdx + 1] : undefined;
+        const noEmbed = argv.includes("--no-embed");
+        const summary = JSON.parse(readFile(sweepPath, "utf8"));
+        const { renderSweepPdf } = await import("../src/report.js");
+        const buf = await renderSweepPdf(summary, { out: outPath === "-" ? undefined : outPath, title, embedImages: !noEmbed });
+        console.log(JSON.stringify({ ok: true, sweep: sweepPath, out: outPath, bytes: buf.length }, null, 2));
         break;
       }
       case "every-viewport": {

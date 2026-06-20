@@ -17,7 +17,7 @@ import { runSweep } from "./sweep.js";
 import { runEveryViewport } from "./every-viewport.js";
 import { runFrames } from "./frames.js";
 import { runHover } from "./hover.js";
-import { runDiff } from "./diff.js";
+import { runDiff, runDiffWithAi } from "./diff.js";
 import { runProbe } from "./probe.js";
 import { runShot } from "./shot.js";
 import { runEval } from "./eval.js";
@@ -41,6 +41,8 @@ import { startHarCapture, stopHarCapture, writeHar } from "./har.js";
 import { saveAuthState, loadAuthState, listAuthStates, deleteAuthState } from "./auth.js";
 import { startWatch, matchGlob, shouldFire } from "./watch.js";
 import { runSnap, approveSnapsAsBaselines } from "./snap.js";
+import { renderSweepPdf } from "./report.js";
+import { aiDiffSummary, aiDiffSidecar } from "./ai-diff.js";
 
 
 // Derive VERSION from package.json to prevent drift
@@ -77,6 +79,10 @@ export {
   // v6: watch mode, component snapshot
   startWatch, matchGlob, shouldFire,
   runSnap, approveSnapsAsBaselines,
+  // v6: PDF report, AI diff summary
+  runDiffWithAi,
+  renderSweepPdf,
+  aiDiffSummary, aiDiffSidecar,
   VERSION,
 };
 
@@ -96,5 +102,7 @@ export default {
   saveBaseline, loadBaseline, listBaselines, approveBaseline, diffKey, resolveBaselinePath,
   validateSweepPlan, registerSweepOp,
   listResources, readResource, recordResource,
+  // v6: PDF report, AI diff summary
+  runDiffWithAi, renderSweepPdf, aiDiffSummary, aiDiffSidecar,
   VERSION,
 };

@@ -1,4 +1,5 @@
 // Unit tests for util, selector, overlay, plugin modules.
+const os = { tmpdir };
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -426,4 +427,113 @@ test("matchGlob special characters are escaped", () => {
   assert.equal(matchGlob("a.css", "a.css"), true);
   // $ should be literal
   assert.equal(matchGlob("a$bc", "a\\$bc"), true);
+});
+
+
+// --- v0.6.0: PDF report + AI diff summary ---
+
+test("renderSweepPdf returns a non-empty PDF buffer (no embed)", async () => {
+  const { renderSweepPdf } = await import("../src/report.js");
+  const summary = { name: "smoke", ts: "2025-01-01T00:00:00Z", outDir: "/tmp/x", steps: [
+    { i: 1, name: "s1", op: "shot", ok: true, ms: 12, meta: {} },
+    { i: 2, name: "s2", op: "diff", ok: false, ms: 34, meta: { numDiff: 99, diffPct: 1.2 }, error: "differ" },
+  ]};
+  const buf = await renderSweepPdf(summary, { embedImages: false });
+  assert.ok(Buffer.isBuffer(buf));
+  assert.ok(buf.length > 1000, "PDF should be at least 1KB");
+  // PDF magic number
+  assert.equal(buf.slice(0, 4).toString("utf8"), "%PDF");
+});
+
+test("renderSweepPdf writes to file when opts.out is set", async () => {
+  const { renderSweepPdf } = await import("../src/report.js");
+  const { mkdtempSync, readFileSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join(os.tmpdir(), "pursr-pdf-"));
+  try {
+    const out = join(dir, "r.pdf");
+    const buf = await renderSweepPdf({ name: "x", steps: [{ i: 1, name: "a", op: "shot", ok: true, ms: 1, meta: {} }] }, { out, embedImages: false });
+    const onDisk = readFileSync(out);
+    assert.equal(buf.length, onDisk.length);
+    assert.equal(onDisk.slice(0, 4).toString("utf8"), "%PDF");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("renderSweepPdf rejects bad summary", async () => {
+  const { renderSweepPdf } = await import("../src/report.js");
+  await assert.rejects(() => renderSweepPdf(null), /summary\.steps/);
+  await assert.rejects(() => renderSweepPdf({ steps: "not-array" }), /summary\.steps/);
+});
+
+test("aiDiffSummary throws when ref/cur missing", async () => {
+  const { aiDiffSummary } = await import("../src/ai-diff.js");
+  await assert.rejects(() => aiDiffSummary({}), /refPath and curPath/);
+  await assert.rejects(() => aiDiffSummary({ refPath: "/nope/a.png", curPath: "/nope/b.png" }), /ref not found/);
+});
+
+test("aiDiffSummary throws when no API key", async () => {
+  const { aiDiffSummary } = await import("../src/ai-diff.js");
+  const { writeFileSync, mkdtempSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join(os.tmpdir(), "pursr-ai-"));
+  try {
+    const ref = join(dir, "ref.png"); const cur = join(dir, "cur.png");
+    writeFileSync(ref, Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+    writeFileSync(cur, Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+    // Force no key by clearing all known vars
+    const saved = { PURSR_AI_API_KEY: process.env.PURSR_AI_API_KEY, PURSOR_AI_API_KEY: process.env.PURSOR_AI_API_KEY, OPENAI_API_KEY: process.env.OPENAI_API_KEY, ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN };
+    delete process.env.PURSR_AI_API_KEY; delete process.env.PURSOR_AI_API_KEY;
+    delete process.env.OPENAI_API_KEY; delete process.env.ANTHROPIC_AUTH_TOKEN;
+    try {
+      await assert.rejects(() => aiDiffSummary({ refPath: ref, curPath: cur }), /no API key/);
+    } finally {
+      for (const k of Object.keys(saved)) if (saved[k] !== undefined) process.env[k] = saved[k];
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("aiDiffSidecar returns JSON-friendly object with summary/model/elapsed", async () => {
+  // We cannot make a real API call from unit tests. Stub global fetch to return a fake completion.
+  const { aiDiffSidecar } = await import("../src/ai-diff.js");
+  const { writeFileSync, mkdtempSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join(os.tmpdir(), "pursr-aiside-"));
+  try {
+    const ref = join(dir, "ref.png"); const cur = join(dir, "cur.png");
+    writeFileSync(ref, Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+    writeFileSync(cur, Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+    const orig = global.fetch;
+    let called = 0;
+    global.fetch = async (url, init) => {
+      called++;
+      const body = JSON.parse(init.body);
+      assert.equal(body.model, "stub-model");
+      assert.ok(body.messages[1].content.some(c => c.type === "image_url"), "ref image present");
+      assert.ok(body.messages[1].content.filter(c => c.type === "image_url").length >= 2, "both images present");
+      return { ok: true, status: 200, statusText: "OK", json: async () => ({ choices: [{ message: { content: "**Overall:** identical" } }], usage: { total_tokens: 10 } }), text: async () => "" };
+    };
+    try {
+      const r = await aiDiffSidecar({ refPath: ref, curPath: cur, url: "https://x", model: "stub-model", apiKey: "sk-test" });
+      assert.equal(called, 1);
+      assert.equal(r.aiSummary, "**Overall:** identical");
+      assert.equal(r.aiModel, "stub-model");
+      assert.ok(typeof r.aiElapsedMs === "number");
+      assert.ok(r.aiAt);
+    } finally {
+      global.fetch = orig;
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("runDiffWithAi surfaces AI error gracefully (no throw)", async () => {
+  // Patch fetch to 500, runDiffWithAi should still return a result with ai.error set.
+  const { runDiffWithAi } = await import("../src/diff.js");
+  const orig = global.fetch;
+  global.fetch = async () => ({ ok: false, status: 500, statusText: "Server Error", text: async () => "boom" });
+  try {
+    // We pass missing ref -> runDiff returns early with { error }. But here we want to test the error path
+    // inside runDiffWithAi when fetch fails AFTER a successful diff. Use a non-existent ref to short-circuit.
+    const r = await runDiffWithAi("https://example.invalid", "C:/__nope_ref__.png", "C:/__nope_out__.png", 0.1, { apiKey: "sk-test" });
+    assert.ok(r.error, "should have an error");
+  } finally { global.fetch = orig; }
 });

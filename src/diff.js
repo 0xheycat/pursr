@@ -6,6 +6,7 @@ import { launch, newPage } from "./runway.js";
 import { DEFAULT_VIEWPORT } from "./viewport.js";
 import { gotoOrThrow, settle } from "./overlays.js";
 import { requireArg } from "./util.js";
+import { aiDiffSidecar } from "./ai-diff.js";
 
 const DIFF_DEFAULT_THRESHOLD = 0.1;
 
@@ -45,4 +46,31 @@ export async function runDiff(url, refPath, out, threshold, browser) {
     if (out) writeFileSync(out, PNG.sync.write(diffPng));
     return { ...r, url, refPath, currentPath, out: out || null, threshold: t, refSize: { w: refPng.width, h: refPng.height }, totalPx, numDiff, diffPct: Number(diffPct.toFixed(3)), equal: numDiff === 0 };
   } finally { if (ownBrowser) try { await browser.close(); } catch {} }
+}
+
+/**
+ * Like runDiff, but additionally calls a vision LLM to produce a human-readable
+ * summary of the visual differences. The AI summary is written to <out>.ai.json
+ * and also returned on the result object.
+ */
+export async function runDiffWithAi(url, refPath, out, threshold, aiOpts, browser) {
+  const r = await runDiff(url, refPath, out, threshold, browser);
+  if (r.error) return r;
+  try {
+    const curPath = r.currentPath;
+    const sidecar = await aiDiffSidecar({
+      refPath, curPath, url,
+      model: aiOpts && aiOpts.model,
+      baseUrl: aiOpts && aiOpts.baseUrl,
+      apiKey: aiOpts && aiOpts.apiKey,
+      maxTokens: aiOpts && aiOpts.maxTokens,
+    });
+    r.ai = sidecar;
+    const sidecarPath = (out || curPath).replace(/.png$/i, "") + ".ai.json";
+    fs.writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2), "utf8");
+    r.aiFile = sidecarPath;
+  } catch (e) {
+    r.ai = { error: e.message };
+  }
+  return r;
 }
