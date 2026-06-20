@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="pursr icon">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF2EA6"/>
+      <stop offset="1" stop-color="#FF5CC1"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="24" fill="#0B0B0F"/>
+  <g transform="translate(8,8)">
+    <circle cx="56" cy="56" r="42" fill="none" stroke="url(#g)" stroke-width="7"/>
+    <g fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round">
+      <path d="M56 22 L72 44"/>
+      <path d="M87 41 L74 59"/>
+      <path d="M87 75 L66 67"/>
+      <path d="M56 90 L46 69"/>
+      <path d="M25 75 L38 66"/>
+      <path d="M25 41 L39 51"/>
+    </g>
+    <path d="M56 28 L72 70 L60 66 L52 80 L48 70 L56 28 Z" fill="url(#g)"/>
+  </g>
+</svg>

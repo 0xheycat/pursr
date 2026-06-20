@@ -28,7 +28,8 @@ export async function runSweep(planPath, outDirArg) {
   const summary = { plan: pathResolve(planPath), outDir: dir, name: plan.name || null, steps: [], ts: nowIso() };
   const browser = await launch();
   try {
-    for (let i = 0; i < plan.steps.length; i++) {
+    // Per-step runner: returns an entry for the summary.
+    async function runStep(i) {
       const s = plan.steps[i] || {};
       const stepName = s.name || `step-${i}`;
       const stepOut = join(dir, `${String(i).padStart(2, "0")}-${stepName}.png`);
@@ -53,7 +54,6 @@ export async function runSweep(planPath, outDirArg) {
           const viewport = resolveViewport(s.hover);
           const page = await newPage(browser, viewport);
           const r = await gotoOrThrow(page, url); await settle(page);
-          // Auto-heal: selector can be string or array of fallbacks
           const healed = await resolveHealedSelector(page, selector);
           await healed.locator.first().hover({ timeout: CLICK_TIMEOUT_MS });
           await page.waitForTimeout(asNum(s.hover.settleMs, 300));
@@ -88,8 +88,29 @@ export async function runSweep(planPath, outDirArg) {
       } catch (e) {
         entry.ok = false; entry.error = e.message; entry.ms = Date.now() - t0;
       }
-      summary.steps.push(entry);
+      return entry;
     }
+
+    // Schedule: serial by default, or via a worker pool when plan.parallel > 1.
+    const poolSize = Math.max(1, Number(plan.parallel) || 1);
+    const results = new Array(plan.steps.length);
+    if (poolSize === 1) {
+      for (let i = 0; i < plan.steps.length; i++) {
+        results[i] = await runStep(i);
+      }
+    } else {
+      let cursor = 0;
+      async function worker() {
+        while (true) {
+          const idx = cursor++;
+          if (idx >= plan.steps.length) return;
+          results[idx] = await runStep(idx);
+        }
+      }
+      const workers = Array.from({ length: Math.min(poolSize, plan.steps.length) }, () => worker());
+      await Promise.all(workers);
+    }
+    for (const r of results) summary.steps.push(r);
   } finally { try { await browser.close(); } catch {} }
   writeFileSync(join(dir, "sweep.json"), JSON.stringify(summary, null, 2));
   writeFileSync(join(dir, "index.html"), renderSweepHtml(summary));

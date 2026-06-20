@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-label="pursr">
+  <defs>
+    <linearGradient id="pursr-mark-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF2EA6"/>
+      <stop offset="1" stop-color="#FF5CC1"/>
+    </linearGradient>
+  </defs>
+  <!-- Mark: cursor arrowhead fused with camera aperture / lens iris -->
+  <g transform="translate(8,8)">
+    <!-- Outer iris ring -->
+    <circle cx="40" cy="40" r="34" fill="none" stroke="url(#pursr-mark-grad)" stroke-width="6"/>
+    <!-- Aperture blades (6) -->
+    <g fill="none" stroke="url(#pursr-mark-grad)" stroke-width="6" stroke-linecap="round">
+      <path d="M40 12 L52 30"/>
+      <path d="M64.4 25.6 L54.5 40"/>
+      <path d="M64.4 54.4 L48 48"/>
+      <path d="M40 68 L32 50"/>
+      <path d="M15.6 54.4 L26 47"/>
+      <path d="M15.6 25.6 L27 34"/>
+    </g>
+    <!-- Cursor chevron pointer on top of iris -->
+    <path d="M40 18 L52 50 L42 47 L36 58 L33 50 L40 18 Z" fill="url(#pursr-mark-grad)"/>
+  </g>
+  <!-- Wordmark: pursr -->
+  <g transform="translate(108,62)" font-family="-apple-system,BlinkMacSystemFont,Inter,Segoe UI,Roboto,sans-serif" font-weight="700" font-size="56" letter-spacing="-2">
+    <text fill="#0B0B0F" x="0" y="0">pursr</text>
+    <rect x="170" y="-12" width="10" height="10" fill="#FF2EA6"/>
+  </g>
+</svg>

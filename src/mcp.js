@@ -20,6 +20,7 @@ import { captureDomSnapshot } from "./dom-snapshot.js";
 import { runAudit } from "./plugin-audit.js";
 import { loadPlugins, listPlugins } from "./plugin.js";
 import { makeOut, nowIso } from "./util.js";
+import { listResources, readResource, recordResource } from "./mcp-resources.js";
 import { createRequire } from "node:module";
 
 const __require = createRequire(import.meta.url);
@@ -156,6 +157,17 @@ class PursorMCPServer {
           this._send({ jsonrpc: "2.0", id, result: { tools: this._toolDefs() } });
           break;
 
+        case "resources/list":
+          this._send({ jsonrpc: "2.0", id, result: { resources: listResources().map(this._toMcpResource, this) } });
+          break;
+
+        case "resources/read":
+          if (!msg.params?.uri) throw new McpError(-32602, "Missing uri");
+          const data = readResource(msg.params.uri);
+          if (!data) throw new McpError(-32602, "Resource not found: " + msg.params.uri);
+          this._send({ jsonrpc: "2.0", id, result: { contents: [data] } });
+          break;
+
         case "tools/call":
           if (!msg.params?.name) throw new McpError(-32602, "Missing tool name");
           const result = await this._callTool(msg.params.name, msg.params.arguments || {});
@@ -176,6 +188,17 @@ class PursorMCPServer {
         this._send({ jsonrpc: "2.0", id, error: { code: -32603, message: e.message } });
       }
     }
+  }
+
+  // ── Resource shape adapter ─────────────────────────────────────────
+
+  _toMcpResource(r) {
+    return {
+      uri: r.uri,
+      name: r.name,
+      description: r.description || (r.kind + ": " + r.id),
+      mimeType: r.mimeType || "application/octet-stream",
+    };
   }
 
   // ── Tool definitions ────────────────────────────────────────────────
@@ -325,6 +348,15 @@ class PursorMCPServer {
       ? JSON.parse(readFileSync(meta.out.replace(/\.png$/i, ".json"), "utf8"))
       : meta;
 
+    recordResource({
+      kind: "shoot", id: Date.now().toString(36),
+      name: "shoot: " + (flags.preset || "default") + " " + url,
+      description: "Screenshot capture",
+      uri: "pursor://shoot/" + encodeURIComponent(url + "|" + (flags.preset || "default")),
+      mimeType: "image/png",
+      file: out, meta: { url, flags, ts: sidecar?.ts },
+    });
+
     return [{ type: "text", text: JSON.stringify({ out, meta: sidecar }, null, 2) }];
   }
 
@@ -345,6 +377,15 @@ class PursorMCPServer {
     if (!args.plan) throw new McpError(-32602, "Missing required: plan");
     if (!existsSync(args.plan)) throw new McpError(-32602, `Plan file not found: ${args.plan}`);
     const summary = await runSweep(args.plan, args.outDir);
+    recordResource({
+      kind: "sweep", id: summary.name || "sweep",
+      name: "sweep: " + (summary.name || "(unnamed)"),
+      description: "Sweep plan: " + (summary.steps?.length || 0) + " steps",
+      uri: "pursor://sweep/" + encodeURIComponent(summary.name || "sweep"),
+      mimeType: "application/json",
+      file: (summary.outDir ? join(summary.outDir, "sweep.json") : null),
+      meta: { steps: summary.steps?.length || 0, ts: summary.ts },
+    });
     return [{ type: "text", text: JSON.stringify(summary, null, 2) }];
   }
 

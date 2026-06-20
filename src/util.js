@@ -13,9 +13,13 @@ export function outDir() {
   try {
     mkdirSync(dir, { recursive: true });
     return dir;
-  } catch {
+  } catch (e) {
     const fallback = join(tmpdir(), "pursor");
-    mkdirSync(fallback, { recursive: true });
+    try {
+      mkdirSync(fallback, { recursive: true });
+    } catch {}
+    // Surface a single warning so silent fallback is debuggable.
+    if (process.env.PURSOR_DEBUG) console.error("[pursor] outDir fallback to", fallback, "(", e?.message, ")");
     return fallback;
   }
 }
@@ -111,15 +115,22 @@ export async function writeSidecar(meta) {
 }
 
 export function findStepPng(dir, stepName) {
-  const target = String(stepName || "").replace(/\.png$/i, "");
+  const target = String(stepName || "").replace(/.png$/i, "").trim();
   const files = readdirSyncFiles(dir);
   if (!files.length) return null;
-  // exact basename match first
+  if (!target) return null;
+  // exact basename match first (handles refs like "baseline" or "00-baseline")
   for (const f of files) {
     const base = basename(f, ".png");
     if (base === target) return join(dir, f);
   }
-  // suffix match (e.g. "03-baseline" ref'd as "baseline")
+  // match the "NN-" prefix-stripped basename (e.g. "03-baseline" referenced as "baseline")
+  for (const f of files) {
+    const base = basename(f, ".png");
+    const m = base.match(/^\d+-(.+)$/);
+    if (m && m[1] === target) return join(dir, f);
+  }
+  // loose suffix match
   for (const f of files) {
     const base = basename(f, ".png");
     if (base.endsWith("-" + target)) return join(dir, f);

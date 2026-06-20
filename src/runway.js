@@ -50,7 +50,7 @@ export async function launch() {
   return await chromium.launch({ headless: true, executablePath: exec, args: BROWSER_ARGS });
 }
 
-export async function newPage(browser, viewport) {
+export async function newPage(browser, viewport, opts = {}) {
   const ctx = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
     deviceScaleFactor: viewport.dpr || 1,
@@ -58,6 +58,9 @@ export async function newPage(browser, viewport) {
     colorScheme: "light",
     hasTouch: !!(viewport.name && viewport.name.startsWith("mobile")),
     isMobile: !!(viewport.name && viewport.name.startsWith("mobile")),
+    storageState: opts.storageState || undefined,
   });
-  return await ctx.newPage();
+  const page = await ctx.newPage();
+  page._pursorContext = ctx;
+  return page;
 }

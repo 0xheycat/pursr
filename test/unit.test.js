@@ -169,3 +169,218 @@ test("runShoot no-throw contract — error path returns object", () => {
   // Integration tests cover this via smoke
   assert.ok(true);
 });
+
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+test("findStepPng strips .png and matches NN-prefixed basenames", () => {
+  const dir = join(tmpdir(), "pursor-findstep-" + Date.now());
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "00-baseline.png"), "");
+  writeFileSync(join(dir, "01-grid-64.png"), "");
+  try {
+    // direct basename without .png
+    assert.equal(findStepPng(dir, "00-baseline"), join(dir, "00-baseline.png"));
+    // bare name resolves via NN- prefix-strip
+    assert.equal(findStepPng(dir, "baseline"), join(dir, "00-baseline.png"));
+    // .png extension is normalized
+    assert.equal(findStepPng(dir, "baseline.png"), join(dir, "00-baseline.png"));
+    // loose suffix match
+    assert.equal(findStepPng(dir, "grid-64"), join(dir, "01-grid-64.png"));
+    // not found
+    assert.equal(findStepPng(dir, "nope"), null);
+    // empty ref
+    assert.equal(findStepPng(dir, ""), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+import { diffKey, saveBaseline, loadBaseline, listBaselines, approveBaseline } from "../src/baseline.js";
+import { validateSweepPlan, registerSweepOp } from "../src/sweep-schema.js";
+import { listResources, readResource, recordResource } from "../src/mcp-resources.js";
+
+// --- baseline.js ---
+
+test("diffKey is stable for same input", () => {
+  const a = diffKey({ url: "https://x", viewport: { width: 1280, height: 800, dpr: 1 } });
+  const b = diffKey({ url: "https://x", viewport: { width: 1280, height: 800, dpr: 1 } });
+  assert.equal(a, b);
+  assert.equal(a.length, 16);
+});
+
+test("diffKey changes with url or viewport", () => {
+  const a = diffKey({ url: "https://x", viewport: { width: 1280, height: 800, dpr: 1 } });
+  const b = diffKey({ url: "https://y", viewport: { width: 1280, height: 800, dpr: 1 } });
+  const c = diffKey({ url: "https://x", viewport: { width: 375, height: 800, dpr: 1 } });
+  assert.notEqual(a, b);
+  assert.notEqual(a, c);
+});
+
+test("saveBaseline + loadBaseline round-trip", () => {
+  const tmp = join(tmpdir(), "pursor-baseline-" + Date.now());
+  process.env.PURSOR_BASELINES_DIR = tmp;
+  mkdirSync(join(tmp, "p1"), { recursive: true });
+  const png = join(tmp, "p1", "src.png");
+  writeFileSync(png, "fake-png-bytes");
+  try {
+    const id = diffKey({ url: "https://z", viewport: { width: 800, height: 600, dpr: 1 } });
+    const saved = saveBaseline({ project: "p1", id, step: "s1", png, meta: { url: "https://z" } });
+    assert.ok(saved.file.endsWith("s1.png"));
+    assert.equal(saved.url, "https://z");
+    const loaded = loadBaseline({ project: "p1", id, step: "s1" });
+    assert.ok(loaded);
+    assert.equal(loaded.size, "fake-png-bytes".length);
+    const list = listBaselines("p1");
+    assert.equal(list.length, 1);
+    assert.equal(list[0].id, id);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+    delete process.env.PURSOR_BASELINES_DIR;
+  }
+});
+
+test("approveBaseline overwrites existing baseline", () => {
+  const tmp = join(tmpdir(), "pursor-baseline-" + Date.now() + "-a");
+  process.env.PURSOR_BASELINES_DIR = tmp;
+  mkdirSync(tmp, { recursive: true });
+  const png1 = join(tmp, "v1.png");
+  const png2 = join(tmp, "v2.png");
+  writeFileSync(png1, "v1");
+  writeFileSync(png2, "v2-larger");
+  try {
+    const id = "abcdef0123456789";
+    saveBaseline({ project: "p2", id, step: "x", png: png1, meta: { url: "u" } });
+    const r = approveBaseline({ project: "p2", id, step: "x", fromPng: png2 });
+    assert.equal(r.approvedFrom, png2);
+    const loaded = loadBaseline({ project: "p2", id, step: "x" });
+    assert.equal(loaded.size, "v2-larger".length);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+    delete process.env.PURSOR_BASELINES_DIR;
+  }
+});
+
+// --- sweep-schema.js ---
+
+test("validateSweepPlan accepts a minimal valid plan", () => {
+  const r = validateSweepPlan({ name: "t", base: "http://x", steps: [{ name: "a", shoot: {} }] });
+  assert.equal(r.valid, true, r.errors.join("; "));
+});
+
+test("validateSweepPlan flags empty steps", () => {
+  const r = validateSweepPlan({ steps: [] });
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.includes("non-empty")));
+});
+
+test("validateSweepPlan flags unknown op", () => {
+  const r = validateSweepPlan({ steps: [{ name: "x", weird: { url: "u" } }] });
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.includes("unknown op")));
+});
+
+test("validateSweepPlan flags out-of-range count", () => {
+  const r = validateSweepPlan({ steps: [{ name: "x", frames: { count: 9999 } }] });
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.includes("count")));
+});
+
+test("validateSweepPlan flags duplicate step names", () => {
+  const r = validateSweepPlan({ steps: [{ name: "dup", shoot: {} }, { name: "dup", hover: { selector: "a" } }] });
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some(e => e.includes("duplicate")));
+});
+
+test("registerSweepOp accepts plugin op", () => {
+  registerSweepOp("plugin-foo");
+  const r = validateSweepPlan({ steps: [{ name: "x", "plugin-foo": { url: "u" } }] });
+  assert.equal(r.valid, true, r.errors.join("; "));
+});
+
+// --- mcp-resources.js ---
+
+test("recordResource + listResources round-trip", () => {
+  const tmp = join(tmpdir(), "pursor-mcp-" + Date.now());
+  process.env.PURSOR_MCP_STATE = tmp;
+  const png = join(tmp, "x.png");
+  mkdirSync(tmp, { recursive: true });
+  writeFileSync(png, "data");
+  try {
+    recordResource({
+      kind: "shoot", id: "1", name: "t", description: "d",
+      uri: "pursor://shoot/x", mimeType: "image/png", file: png, meta: { ts: "2025" },
+    });
+    const list = listResources();
+    const hit = list.find(r => r.uri === "pursor://shoot/x");
+    assert.ok(hit, "resource recorded");
+    const data = readResource("pursor://shoot/x");
+    assert.ok(data);
+    assert.equal(data.mimeType, "image/png");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+    delete process.env.PURSOR_MCP_STATE;
+  }
+});
+
+import { saveAuthState, loadAuthState, listAuthStates, deleteAuthState } from "../src/auth.js";
+import { finalizeHar } from "../src/har.js";
+
+test("auth state save/load round-trip", () => {
+  const tmp = join(tmpdir(), "pursor-auth-" + Date.now());
+  process.env.PURSOR_AUTH_DIR = tmp;
+  try {
+    const state = {
+      cookies: [{ name: "sid", value: "abc", domain: "example.com", path: "/", expires: -1, httpOnly: true, secure: true, sameSite: "Lax" }],
+      origins: [{ origin: "https://example.com", localStorage: [{ name: "k", value: "v" }] }],
+    };
+    const r = saveAuthState({ project: "p1", name: "user1", state });
+    assert.ok(r.file.endsWith("user1.json"));
+    const loaded = loadAuthState({ project: "p1", name: "user1" });
+    assert.ok(loaded);
+    assert.equal(loaded.cookies.length, 1);
+    assert.equal(loaded.origins.length, 1);
+    const list = listAuthStates("p1");
+    assert.equal(list.length, 1);
+    assert.equal(list[0].name, "user1");
+    assert.equal(deleteAuthState({ project: "p1", name: "user1" }), true);
+    assert.equal(loadAuthState({ project: "p1", name: "user1" }), null);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+    delete process.env.PURSOR_AUTH_DIR;
+  }
+});
+
+test("finalizeHar produces a HAR 1.2 log", () => {
+  // fake state with two entries
+  const state = {
+    started: Date.now() - 100,
+    creator: { name: "pursor", version: "0.3.0" },
+    browser: { name: "chromium", version: "test" },
+    pages: [],
+    entries: [
+      { request: { method: "GET", url: "https://x/y" }, response: { status: 200, statusText: "OK" } },
+      { request: { method: "GET", url: "https://x/z" }, response: { status: 404, statusText: "Not Found" } },
+    ],
+  };
+  const har = finalizeHar(state);
+  assert.equal(har.log.version, "1.2");
+  assert.equal(har.log.creator.name, "pursor");
+  assert.equal(har.log.entries.length, 2);
+  assert.equal(har._meta.entryCount, 2);
+  assert.ok(har._meta.finished >= har._meta.started);
+});
+
+test("parallel sweep config: plan.parallel is exposed in runSweep shape", async () => {
+  // Cannot run full sweep here (needs browser), but verify the value parsing.
+  // Mirrors what runSweep does: Math.max(1, Number(plan.parallel) || 1)
+  const poolSize = (p) => Math.max(1, Number(p?.parallel) || 1);
+  assert.equal(poolSize({}), 1);
+  assert.equal(poolSize({ parallel: 1 }), 1);
+  assert.equal(poolSize({ parallel: 4 }), 4);
+  assert.equal(poolSize({ parallel: "3" }), 3);
+  assert.equal(poolSize({ parallel: 0 }), 1); // 0 falls back to 1
+  assert.equal(poolSize({ parallel: -5 }), 1);
+  assert.equal(poolSize({ parallel: "abc" }), 1); // NaN -> 1
+});

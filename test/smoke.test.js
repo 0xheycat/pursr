@@ -55,7 +55,7 @@ after(() => new Promise(r => { if (server) server.close(r); }));
 // --- CLI helper ---
 function cli(args, timeoutMs = 30_000) {
   return new Promise((resolve, reject) => {
-    const p = spawn("node", ["bin/pursor.mjs", ...args], {
+    const p = spawn("node", ["bin/pursr.mjs", ...args], {
       cwd: process.cwd(),
       stdio: ["ignore", "pipe", "pipe"],
       timeout: timeoutMs,

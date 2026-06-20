@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="pursr — visual QA, audit, and MCP for the browser">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B0B0F"/>
+      <stop offset="0.6" stop-color="#15101A"/>
+      <stop offset="1" stop-color="#1F0A1A"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF2EA6"/>
+      <stop offset="1" stop-color="#FF5CC1"/>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0 L0 0 0 48" fill="none" stroke="#FF2EA6" stroke-opacity="0.08" stroke-width="1"/>
+    </pattern>
+    <radialGradient id="glow" cx="0.85" cy="0.15" r="0.6">
+      <stop offset="0" stop-color="#FF2EA6" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FF2EA6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+  <rect width="1280" height="640" fill="url(#glow)"/>
+
+  <!-- Decorative screenshot card on the right -->
+  <g transform="translate(720,160)">
+    <rect width="440" height="320" rx="16" fill="#101015" stroke="#2A2A30"/>
+    <rect x="0" y="0" width="440" height="40" rx="16" fill="#1B1B22"/>
+    <circle cx="20" cy="20" r="6" fill="#FF5F56"/>
+    <circle cx="40" cy="20" r="6" fill="#FFBD2E"/>
+    <circle cx="60" cy="20" r="6" fill="#27C93F"/>
+    <text x="220" y="25" fill="#666" font-family="monospace" font-size="12" text-anchor="middle">pursor.mjs shoot</text>
+    <line x1="20" y1="80" x2="200" y2="80" stroke="#FF2EA6" stroke-width="14" stroke-linecap="round"/>
+    <line x1="20" y1="120" x2="380" y2="120" stroke="#3A3A45" stroke-width="8" stroke-linecap="round"/>
+    <line x1="20" y1="160" x2="320" y2="160" stroke="#3A3A45" stroke-width="8" stroke-linecap="round"/>
+    <line x1="20" y1="200" x2="260" y2="200" stroke="#3A3A45" stroke-width="8" stroke-linecap="round"/>
+    <rect x="20" y="240" width="120" height="48" rx="6" fill="#FF2EA6"/>
+    <line x1="160" y1="264" x2="220" y2="264" stroke="#3A3A45" stroke-width="6" stroke-linecap="round"/>
+    <line x1="240" y1="252" x2="380" y2="252" stroke="#3A3A45" stroke-width="6" stroke-linecap="round"/>
+    <line x1="240" y1="276" x2="340" y2="276" stroke="#3A3A45" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <!-- Brand mark + wordmark on the left -->
+  <g transform="translate(80,200)">
+    <g transform="scale(1.5)">
+      <circle cx="40" cy="40" r="34" fill="none" stroke="url(#mark)" stroke-width="6"/>
+      <g fill="none" stroke="url(#mark)" stroke-width="6" stroke-linecap="round">
+        <path d="M40 12 L52 30"/>
+        <path d="M64.4 25.6 L54.5 40"/>
+        <path d="M64.4 54.4 L48 48"/>
+        <path d="M40 68 L32 50"/>
+        <path d="M15.6 54.4 L26 47"/>
+        <path d="M15.6 25.6 L27 34"/>
+      </g>
+      <path d="M40 18 L52 50 L42 47 L36 58 L33 50 L40 18 Z" fill="url(#mark)"/>
+    </g>
+    <text x="140" y="56" fill="#FFFFFF" font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif" font-weight="800" font-size="76" letter-spacing="-3">pursr</text>
+    <rect x="438" y="0" width="14" height="14" fill="#FF2EA6"/>
+  </g>
+
+  <!-- Tagline -->
+  <text x="80" y="380" fill="#FFFFFF" font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif" font-weight="600" font-size="34" letter-spacing="-1">Visual QA, audit &amp; MCP for the browser.</text>
+  <text x="80" y="430" fill="#A0A0AA" font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif" font-weight="400" font-size="22" letter-spacing="-0.5">Capture · sweep · diff · audit · repeat.</text>
+
+  <!-- Footer chip line -->
+  <g transform="translate(80,520)">
+    <rect width="180" height="36" rx="18" fill="#1A1A22" stroke="#2A2A30"/>
+    <text x="90" y="23" fill="#FF5CC1" font-family="monospace" font-size="14" text-anchor="middle">npm i pursr</text>
+  </g>
+  <g transform="translate(280,520)">
+    <rect width="200" height="36" rx="18" fill="#1A1A22" stroke="#2A2A30"/>
+    <text x="100" y="23" fill="#A0A0AA" font-family="monospace" font-size="14" text-anchor="middle">7 MCP tools · 32 tests</text>
+  </g>
+  <g transform="translate(500,520)">
+    <rect width="220" height="36" rx="18" fill="#1A1A22" stroke="#2A2A30"/>
+    <text x="110" y="23" fill="#A0A0AA" font-family="monospace" font-size="14" text-anchor="middle">HAR · baselines · parallel</text>
+  </g>
+</svg>

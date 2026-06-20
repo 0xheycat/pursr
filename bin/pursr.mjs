@@ -16,6 +16,9 @@ import { runAudit } from "../src/plugin-audit.js";
 import { captureDomSnapshot } from "../src/dom-snapshot.js";
 import { listViewports } from "../src/viewport.js";
 import { parseFlags, asNum, readArg, makeOut, pickOutPath } from "../src/util.js";
+import { writeFileSync } from "node:fs";
+import { readFileSync as _readFileSync } from "node:fs";
+const readFile = _readFileSync;
 import { loadPlugins, listPlugins, getFlagHelp } from "../src/plugin.js";
 
 const USAGE = `usage:
@@ -74,7 +77,7 @@ await loadPlugins(pluginPaths);
         if (!url) die("missing url");
         const layerName = b; if (!layerName) die("layer: missing <name>");
         const out = (c && !c.startsWith("--")) ? c : pickOutPath(argv.slice(6)) || makeOut(`layer-${layerName}.png`);
-        const flags = parseFlags(argv.slice(6)); flags.layer = layerName;
+        const flags = parseFlags(argv.slice(7)); flags.layer = layerName;
         const r = await runShootWithSidecar({ url, out, flags });
         console.log(JSON.stringify(r, null, 2));
         break;
@@ -127,7 +130,95 @@ await loadPlugins(pluginPaths);
         console.log(JSON.stringify({ url: r.url, title: r.title, elements: r.selectorMap?.length, domSize: r.dom?.length, out: r.url?.replace(/[^/]+$/, "") + "dom.json" }, null, 2));
         break;
       }
-      default: { die(`unknown subcommand: ${cmd}`); }
+      case "validate": {
+        const planPath = readArg(a);
+        if (!planPath) die("validate: missing <plan.json> (or @file)");
+        let plan;
+        try { plan = JSON.parse(readFile(planPath, "utf8")); }
+        catch (e) { die("validate: " + e.message); }
+        const { validateSweepPlan } = await import("../src/sweep-schema.js");
+        const v = validateSweepPlan(plan);
+        console.log(JSON.stringify({ valid: v.valid, errors: v.errors, plan: planPath }, null, 2));
+        if (!v.valid) process.exit(1);
+        break;
+      }
+      case "baseline": {
+        // pursor baseline <sub> [...args]
+        //   sub=list                    -> list baselines
+        //   sub=save <project> <png> <step>  [--id <id>] [--url <u>] [--meta-json <file>]
+        //   sub=approve <project> <png> <step>  [--id <id>] [--url <u>]
+        //   sub=show <project> <step>    [--id <id>] [--url <u>]
+        const sub = a;
+        const { saveBaseline, listBaselines, loadBaseline, approveBaseline, diffKey } = await import("../src/baseline.js");
+        if (sub === "list") {
+          // baseline list [project]
+          const project = b;
+          console.log(JSON.stringify(listBaselines(project), null, 2));
+        } else if (sub === "save") {
+          if (!b || !c || !d) die("baseline save: <project> <png> <step> [--id <id>] [--url <u>] [--meta-json <file>]");
+          const project = b, png = c, step = d;
+          const flags = parseFlags(argv.slice(7));
+          let meta = null;
+          if (flags["meta-json"]) meta = JSON.parse(readFile(flags["meta-json"], "utf8"));
+          else if (flags.url) meta = { url: flags.url };
+          const id = flags.id || diffKey({ url: meta?.url || "", viewport: meta?.viewport, flags: meta?.flags || {} });
+          const result = saveBaseline({ project, id, step, png, meta });
+          console.log(JSON.stringify({ saved: true, ...result }, null, 2));
+        } else if (sub === "approve") {
+          if (!b || !c || !d) die("baseline approve: <project> <png> <step> [--id <id>] [--url <u>]");
+          const project = b, png = c, step = d;
+          const flags = parseFlags(argv.slice(7));
+          const id = flags.id || diffKey({ url: flags.url || "", flags: {} });
+          const result = approveBaseline({ project, id, step, fromPng: png });
+          console.log(JSON.stringify({ approved: true, ...result }, null, 2));
+        } else if (sub === "show") {
+          if (!b || !c) die("baseline show: <project> <step> [--id <id>] [--url <u>]");
+          const project = b, step = c;
+          const flags = parseFlags(argv.slice(5));
+          const id = flags.id || diffKey({ url: flags.url || "", flags: {} });
+          const r = loadBaseline({ project, id, step });
+          console.log(JSON.stringify(r, null, 2));
+        } else {
+          die("baseline subcommand: list | save | approve | show");
+        }
+        break;
+      }
+      case "auth": {
+              // pursor auth <sub> [...args]
+              //   save <project> <name> --from <state.json>
+              //   load <project> <name> --out <state.json>
+              //   list [project]
+              //   delete <project> <name>
+              const sub = a;
+              const { saveAuthState, loadAuthState, listAuthStates, deleteAuthState } = await import("../src/auth.js");
+              if (sub === "list") {
+                const project = b;
+                console.log(JSON.stringify(listAuthStates(project), null, 2));
+              } else if (sub === "save") {
+                if (!b || !c) die("auth save: <project> <name> --from <state.json>");
+                const fromFile = argv[argv.indexOf("--from") + 1];
+                if (!fromFile) die("auth save: missing --from <state.json>");
+                const state = JSON.parse(readFile(fromFile, "utf8"));
+                const r = saveAuthState({ project: b, name: c, state });
+                console.log(JSON.stringify({ saved: true, ...r }, null, 2));
+              } else if (sub === "load") {
+                if (!b || !c) die("auth load: <project> <name> --out <state.json>");
+                const outFile = argv[argv.indexOf("--out") + 1];
+                if (!outFile) die("auth load: missing --out <state.json>");
+                const state = loadAuthState({ project: b, name: c });
+                if (!state) { console.error("not found"); process.exit(2); }
+                writeFileSync(outFile, JSON.stringify(state, null, 2), "utf8");
+                console.log(JSON.stringify({ loaded: true, file: outFile, cookies: state.cookies.length, origins: state.origins.length }, null, 2));
+              } else if (sub === "delete") {
+                if (!b || !c) die("auth delete: <project> <name>");
+                const ok = deleteAuthState({ project: b, name: c });
+                console.log(JSON.stringify({ deleted: ok }, null, 2));
+              } else {
+                die("auth subcommand: list | save | load | delete");
+              }
+              break;
+            }
+            default: { die(`unknown subcommand: ${cmd}`); }
     }
   } catch (e) {
     console.error(JSON.stringify({ error: e.message, stack: e.stack?.split("\n").slice(0, 3).join("\n") }, null, 2));

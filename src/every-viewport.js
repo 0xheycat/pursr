@@ -21,16 +21,26 @@ export async function runEveryViewport({ url, outDir, viewports, browser: extBro
   const wanted = viewports?.length ? all.filter(v => viewports.includes(v.name)) : all;
   const captures = [];
   try {
-    for (const vp of wanted) {
-      const out = join(dir, `${vp.name}.png`);
-      const t0 = Date.now();
-      try {
-        const meta = await runShoot({ url, out, flags: { preset: vp.name }, browser });
-        captures.push({ name: vp.name, out, ok: true, ms: Date.now() - t0, meta });
-      } catch (e) {
-        captures.push({ name: vp.name, out, ok: false, ms: Date.now() - t0, error: e.message });
+    // Bounded concurrency: 3 viewports at a time. Each runShoot reuses the
+    // shared browser, so we cap the pool to avoid exhausting Chromium.
+    const POOL = 3;
+    let cursor = 0;
+    async function worker() {
+      while (cursor < wanted.length) {
+        const idx = cursor++;
+        const vp = wanted[idx];
+        const out = join(dir, `${vp.name}.png`);
+        const t0 = Date.now();
+        try {
+          const meta = await runShoot({ url, out, flags: { preset: vp.name }, browser });
+          captures.push({ name: vp.name, out, ok: true, ms: Date.now() - t0, meta });
+        } catch (e) {
+          captures.push({ name: vp.name, out, ok: false, ms: Date.now() - t0, error: e.message });
+        }
       }
     }
+    const workers = Array.from({ length: Math.min(POOL, wanted.length) }, () => worker());
+    await Promise.all(workers);
   } finally {
     if (ownBrowser) try { await browser.close(); } catch {}
   }

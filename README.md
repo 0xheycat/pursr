@@ -1,86 +1,158 @@
-# pursor
+<!-- PROJECT_LOGO_START -->
+<p align="center">
+  <img src="assets/social-preview.svg" alt="pursr - visual QA, audit, and MCP for the browser" width="100%">
+</p>
 
-> **Visual QA & audit CLI + library + MCP server for the browser.**
-> Capture, diff, sweep, and audit any web target — with multi-viewport,
-> layered states, hover, grid overlays, animation freeze, camera control,
-> axe-core accessibility audit, CI output, and auto-healing selectors.
+<p align="center">
+  <img src="assets/logo.svg" alt="pursr" width="320">
+</p>
 
-```bash
-npx pursor probe https://example.com
-npx pursor shoot https://example.com --preset mobile-375 --grid
-npx pursor sweep ./plan.json
-npx pursor audit https://example.com --tags wcag2a,wcag2aa
-npx pursor-mcp   # MCP stdio server for Claude Code / Cursor
-```
+<h1 align="center">pursr</h1>
+
+<p align="center">
+  <strong>Visual QA, audit, and MCP for the browser.</strong><br>
+  Capture - sweep - diff - audit - repeat - from the CLI, an MCP server, or as a library.
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/pursr"><img src="https://img.shields.io/npm/v/pursr.svg?style=for-the-badge&color=FF2EA6" alt="npm version"></a>
+  <a href="https://github.com/0xheycat/pursr/blob/main/LICENSE"><img src="https://img.shields.io/github/license/0xheycat/pursr.svg?style=for-the-badge" alt="license"></a>
+  <a href="https://www.npmjs.com/package/pursr"><img src="https://img.shields.io/npm/dm/pursr.svg?style=for-the-badge" alt="npm downloads"></a>
+  <a href="https://github.com/0xheycat/pursr/actions"><img src="https://img.shields.io/github/actions/workflow/status/0xheycat/pursr/ci.yml?style=for-the-badge" alt="CI"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/pursr.svg?style=for-the-badge" alt="node"></a>
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> &middot; <a href="#30-seconds">30 seconds</a> &middot; <a href="#cli">CLI</a> &middot; <a href="#mcp-server">MCP</a> &middot; <a href="#library-api">Library</a> &middot; <a href="#plugins">Plugins</a> &middot; <a href="#roadmap">Roadmap</a>
+</p>
+
+---
+
+## Why pursr?
+
+Most teams need **four separate tools** to do visual QA: a screenshot CLI, a regression diff runner, an accessibility auditor, and a way to share captures with an AI assistant. **pursr is all four** - built as a single Node.js package with:
+
+- **A unified CLI** (`pursr`) for every capture, diff, sweep, and audit.
+- **An MCP stdio server** (`pursr-mcp`) so Claude Code, Cursor, and Continue can take screenshots, run sweeps, and inspect prior captures as MCP resources.
+- **A library** with 30+ named exports and 16 subpath modules, so you can embed it in your own tooling.
+- **A plugin system** for custom viewports, sweep ops, and capture hooks.
+- **Zero browser bundled** - drives your system Chrome via Playwright. No 200 MB Chromium download.
 
 ## Install
 
 ```bash
-npm install pursor
-npm install --save-dev playwright-core   # peer dep — bring your own Chrome
+npm install pursr
+npm install --save-dev playwright-core   # peer dep - bring your own Chrome
 ```
 
-`pursor` does **not** bundle Chromium. It drives your system Chrome via
-Playwright. No extra browser downloads.
+Then verify:
 
----
+```bash
+pursr viewports         # list 10+ registered viewport presets
+pursr probe https://example.com   # health check
+```
 
-## Table of Contents
+## 30 seconds
 
-- [CLI](#cli)
-- [MCP Server](#mcp-server)
-- [Accessibility Audit](#accessibility-audit)
-- [DOM Snapshot](#dom-snapshot)
-- [CI Output](#ci-output)
-- [Auto-heal Selectors](#auto-heal-selectors)
-- [Sweep Plans](#sweep-plans)
-- [Plugin API](#plugin-api)
-- [Library API](#library-api)
-- [Development](#development)
+```bash
+# 1. Capture a screenshot with overlays
+pursr shoot https://example.com shot.png \
+  --preset desktop-1280 --grid --grid-tile 64
 
----
+# 2. Save it as a visual baseline
+pursr baseline save myapp shot.png home --url https://example.com
+
+# 3. Next time you run, compare against the baseline
+pursr diff https://example.com \
+  ~/.pursor/baselines/myapp/<id>/home.png \
+  diff.png
+
+# 4. Or: run a batched sweep + a11y audit + parallel workers
+pursr sweep ./plan.json   # see plans/ for an example
+```
+
+## Features
+
+| Feature | Description | CLI flag |
+| --- | --- | --- |
+| Multi-viewport capture | 10+ presets (mobile, tablet, desktop, ultrawide) | `--preset mobile-375` |
+| Layered states | entity / terrain / hud / ui isolation | `--layer entity` |
+| Animation freeze | pause CSS/JS animations for stable frames | `--no-animation` |
+| Cursor overlay | pointer / grab / grabbing / crosshair | `--cursor crosshair` |
+| Grid overlay | spacing guides, custom color + tile size | `--grid --grid-tile 64` |
+| Camera control | zoom + pan via mouse wheel/drag | `--zoom 1.5 --panX 200` |
+| Frame timeline | N captures at intervalMs for animations | `pursr frames <url> 8 200` |
+| Hover capture | text=/role=/aria=/placeholder= matchers | `pursr hover <url> "text=Login"` |
+| Pixel diff | `pixelmatch` against any reference PNG | `pursr diff <url> <ref>` |
+| Visual baselines | save / approve / diff with stable IDs | `pursr baseline save ...` |
+| Parallel sweep | opt-in worker pool across independent steps | `{ "parallel": 4 }` |
+| Accessibility audit | axe-core WCAG 2.1 AA + highlighted screenshot | `pursr audit <url>` |
+| DOM snapshot | serialized HTML + computed styles + selector map | `pursr dom <url>` |
+| Sweep plans | JSON-driven batch with per-step ops | `pursr sweep plan.json` |
+| HTML report | dark-themed grid of every capture + meta | auto-generated `index.html` |
+| CI output | JUnit XML, GitHub Actions annotations, Markdown | written on every sweep |
+| Auto-heal selectors | fallback chain + named matchers | `["text=Login", "#login"]` |
+| HAR capture | HAR 1.2 spec, written next to your shot | `--har ./req.har.json` |
+| Auth state | Playwright storageState, reuse logged-in sessions | `--auth-state admin` |
+| Plugins | custom viewports, sweep ops, before/after hooks | `pursr-plugin-*` |
+| MCP server | 7 tools + resources/list & resources/read for Claude/Cursor | `npx pursr-mcp` |
 
 ## CLI
 
 ```bash
 # Health check
-pursor probe https://example.com
+pursr probe https://example.com
 
 # Screenshot (simple)
-pursor shot https://example.com ./out/shot.png
+pursr shot https://example.com ./out/shot.png
 
 # Rich capture: viewport preset + cursor + grid
-pursor shoot https://example.com \
+pursr shoot https://example.com \
   --preset desktop-1280 \
   --cursor crosshair \
   --grid --grid-tile 64
 
-# Isolate a layer (entity / terrain / hud / ui)
-pursor layer https://example.com entity
+# Isolate a layer
+pursr layer https://example.com entity
 
-# Animation timeline: 8 frames at 200ms
-pursor frames https://example.com 8 200 ./frames/
+# Animation timeline
+pursr frames https://example.com 8 200 ./frames/
 
 # Hover an element
-pursor hover https://example.com "text=Login"
+pursr hover https://example.com "text=Login"
 
-# Pixel diff vs a reference screenshot
-pursor diff https://example.com ./ref.png ./out/diff.png
+# Pixel diff vs reference
+pursr diff https://example.com ./ref.png ./out/diff.png
 
-# Batched plan (see plans/ for examples)
-pursor sweep ./plan.json
+# Batched plan
+pursr sweep ./plan.json
 
-# Accessibility audit (requires: npm i axe-core)
-pursor audit https://example.com --tags wcag2a,wcag2aa
+# Accessibility audit
+pursr audit https://example.com --tags wcag2a,wcag2aa
 
 # DOM + selector map snapshot
-pursor dom https://example.com
+pursr dom https://example.com
+
+# HAR capture during a shoot
+pursr shoot https://example.com shot.png --har ./req.har.json
+
+# Auth state reuse
+pursr shoot https://my.app/dashboard shot.png \
+  --auth-state admin --auth-project myapp
+
+# Visual baselines
+pursr baseline save myapp shot.png home --url https://example.com
+pursr baseline list myapp
+pursr baseline approve myapp ./new.png home --url https://example.com
+
+# Plan validation
+pursr validate ./plan.json
 ```
 
 ### Subcommands
 
 | Subcommand | Purpose |
-|---|---|
+| --- | --- |
 | `probe` | Health check (HTTP status, page title) |
 | `shot` / `full` | Viewport / full-page screenshot |
 | `eval` | Execute JS in the page, return result |
@@ -91,442 +163,278 @@ pursor dom https://example.com
 | `layer` | Capture one isolated layer (entity/hud/ui/terrain) |
 | `frames` | N-frame animation timeline at interval |
 | `hover` | Hover state capture |
-| `sweep` | Batched capture plan → HTML report + CI output |
-| `audit` | ⭐ axe-core WCAG accessibility audit + highlighted screenshot |
-| `dom` / `dom-snapshot` | ⭐ Serialized DOM + CSS selectors + XPath + bounding rects |
-
----
+| `sweep` | Batched capture plan -> HTML report + CI output |
+| `audit` | axe-core WCAG accessibility audit + highlighted screenshot |
+| `dom` / `dom-snapshot` | Serialized DOM + CSS selectors + XPath + bounding rects |
+| `every-viewport` | Capture once per preset in parallel (3-wide pool) |
+| `baseline` | save / list / approve / show visual baselines |
+| `auth` | save / load / list / delete Playwright storageState |
+| `validate` | Validate a sweep plan JSON without running it |
 
 ## MCP Server
 
-`pursor-mcp` exposes every capability as MCP tools over stdio —
-works with Claude Code, Cursor, Continue, and any MCP host.
+`pursr-mcp` exposes every capability as MCP tools over stdio - works with Claude Code, Cursor, Continue, and any MCP host.
 
 ```bash
-npx pursor-mcp
+npx pursr-mcp
 # or with verbose logging:
-npx pursor-mcp --verbose
+npx pursr-mcp --verbose
 ```
 
 ### Exposed Tools
 
 | Tool | Description |
-|---|---|
-| `pursor_shoot` | Full screenshot with viewport, grid, layer, cursor, camera, freeze |
-| `pursor_diff` | Pixel diff vs reference PNG + diff overlay |
-| `pursor_sweep` | Execute a batch plan JSON → summary |
-| `pursor_frames` | Animation frame timeline |
-| `pursor_probe` | Health-check a URL |
-| `pursor_audit` | axe-core accessibility audit |
-| `pursor_dom_snapshot` | DOM + CSSOM + selector map + bounding rects |
+| --- | --- |
+| `pursr_shoot` | Rich screenshot capture (viewport, grid, layer, cursor, camera, animation freeze, HAR) |
+| `pursr_diff` | Pixel-diff a URL against a reference PNG |
+| `pursr_sweep` | Execute a batch sweep plan |
+| `pursr_frames` | Capture an N-frame animation timeline |
+| `pursr_probe` | Health-check a URL |
+| `pursr_audit` | axe-core WCAG audit + highlighted screenshot |
+| `pursr_dom_snapshot` | Full DOM + selector map snapshot |
 
-### Config
+### Exposed Resources
 
-Config via `PURSOR_MCP_CONFIG` env var (inline JSON or file path)
-or `~/.pursor/mcp-config.json`:
+| URI | Description |
+| --- | --- |
+| `pursr://shoot/<url|preset>` | Last screenshot PNG (image/png) |
+| `pursr://sweep/<plan-name>` | Last sweep summary JSON (application/json) |
+
+Resources are persisted to `~/.pursor/mcp/mcp-index.json` (override with `PURSOR_MCP_STATE`).
+
+## Visual Regression Baselines
+
+```bash
+pursr baseline save myapp ./out/shoot.png home --url https://my.app
+pursr baseline approve myapp ./out/shoot.png home --url https://my.app
+pursr baseline list myapp
+pursr baseline show myapp home --url https://my.app
+```
+
+Baselines live under `~/.pursor/baselines/<project>/<id>/<step>.png` + `manifest.json`. Override with `PURSOR_BASELINES_DIR`. The `id` is a 16-char SHA1 prefix of `url|viewport|flags` so re-running a sweep maps to the same slot deterministically.
+
+```js
+import { diffKey, saveBaseline, loadBaseline } from "pursr/baseline";
+const id = diffKey({ url: "https://my.app", viewport: { width: 1280, height: 800, dpr: 1 }, flags: { preset: "desktop-1280" } });
+saveBaseline({ project: "myapp", id, step: "home", png: "./shot.png", meta: { url: "https://my.app" } });
+```
+
+## Sweep Plan Validation
+
+```bash
+pursr validate ./plan.json
+# { "valid": false, "errors": ["steps[2].frames.count: must be a number between 1 and 120"] }
+```
+
+Catches: empty steps, unknown ops, out-of-range numbers, duplicate names, missing required fields. `pursr sweep` runs the same validator before executing - fail-fast.
 
 ```json
 {
-  "plugins": ["./my-plugin.js"],
-  "defaultOutDir": "./mcp-output",
-  "verbose": true
+  "name": "homepage-matrix",
+  "base": "https://example.com",
+  "parallel": 4,
+  "steps": [
+    { "name": "baseline",   "shoot":  { "preset": "desktop-1280" } },
+    { "name": "grid-64",    "shoot":  { "preset": "desktop-1280", "grid": true, "grid-tile": 64 } },
+    { "name": "tablet",     "shoot":  { "preset": "tablet-768" } },
+    { "name": "mobile",     "shoot":  { "preset": "mobile-375" } },
+    { "name": "hover-cta",  "hover":  { "selector": ["text=Get started", "a.btn-primary"] } },
+    { "name": "audit",      "audit":  { "tags": "wcag2a,wcag2aa" } },
+    { "name": "diff",       "diff":   { "ref": "baseline" } }
+  ]
 }
 ```
 
-### MCP Host Examples
+## HAR Capture
 
-**Claude Code:**
+```bash
+pursr shoot https://example.com shot.png --har ./out/req.har.json
+```
+
+```js
+import { startHarCapture, stopHarCapture, writeHar } from "pursr/har";
+const state = await startHarCapture(page);
+await page.goto(url);
+const har = stopHarCapture(page);
+await writeHar(har, "./out/req.har.json");
+```
+
+Output is HAR 1.2 spec - pipe to `har-cli`, perf-tools, or any visualizer.
+
+## Auth State
+
+```bash
+pursr auth save myapp admin --from ./playwright-state.json
+pursr shoot https://my.app/dashboard shot.png --auth-state admin --auth-project myapp
+pursr auth list myapp
+pursr auth load myapp admin --out ./round-trip.json
+pursr auth delete myapp admin
+```
+
+States live in `~/.pursor/auth/<project>/<name>.json` (override with `PURSOR_AUTH_DIR`). The on-disk format is the standard Playwright `storageState` shape: `{ cookies, origins }`.
+
+## Parallel Sweep
+
+Add `parallel: N` to your plan to run steps concurrently in a worker pool:
+
 ```json
 {
-  "mcpServers": {
-    "pursor": {
-      "command": "npx",
-      "args": ["pursor-mcp"]
-    }
-  }
+  "name": "matrix",
+  "base": "https://my.app",
+  "parallel": 4,
+  "steps": [
+    { "name": "home",    "shoot": { "preset": "desktop-1280" } },
+    { "name": "pricing", "shoot": { "preset": "desktop-1280" } },
+    { "name": "docs",    "shoot": { "preset": "desktop-1280" } }
+  ]
 }
 ```
 
-**Cursor:**
-```json
-{
-  "mcpServers": {
-    "pursor": {
-      "command": "npx",
-      "args": ["pursor-mcp", "--verbose"]
-    }
-  }
-}
-```
-
----
+Steps run in a shared browser context; results are still ordered by index in the summary. Defaults to serial (`parallel: 1`) - opt in only when steps are independent.
 
 ## Accessibility Audit
 
-Run axe-core WCAG audits on any URL. Optionally captures a highlighted
-screenshot with violated elements outlined in red.
-
 ```bash
-# Quick audit with default tags (wcag2a, wcag2aa, wcag21a, wcag21aa, best-practice)
-pursor audit https://example.com
-
-# Specific WCAG tags
-pursor audit https://example.com --tags wcag2a,wcag2aa
-
-# Custom output directory
-pursor audit https://example.com ./audit-report/
+pursr audit https://example.com --tags wcag2a,wcag2aa
+# Writes: audit.json, audit-summary.md, audit-highlighted.png
 ```
 
-**Output:**
-- `audit.json` — full axe-core results with violation summary
-- `audit-summary.md` — readable Markdown report with severity breakdown
-- `audit-highlighted.png` — screenshot with violations visibly marked
-
-**Sweep plan usage:**
-```json
-{
-  "name": "accessibility-check",
-  "base": "https://example.com",
-  "steps": [
-    {
-      "name": "wcag-audit",
-      "audit": {
-        "tags": "wcag2a,wcag2aa,wcag21aa",
-        "screenshot": true
-      }
-    }
-  ]
-}
-```
-
----
+Injects axe-core, runs a configurable tag set (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `best-practice`), and overlays a red outline on every violating node with the rule id as a label. The summary Markdown includes per-rule failure snippets.
 
 ## DOM Snapshot
 
-Every capture can optionally produce a `.dom.json` sidecar with complete
-page structure — useful for debugging visual regression without opening
-a browser.
-
 ```bash
-pursor dom https://example.com
+pursr dom https://example.com
+# Writes: dom-snapshot-<ts>.dom.json
 ```
 
-**Captured data:**
-- `dom` — `document.documentElement.outerHTML`
-- `selectorMap[]` — every visible element with:
-  - `tag`, `id`, `css` (CSS selector), `xpath`
-  - `role`, `ariaLabel`, `ariaRole`, `text`, `placeholder`, `alt`, `href`, `src`
-  - `rect` — viewport-relative bounding box `{x, y, w, h}`
-  - `visible` — visibility flag
-- `styles` — computed stylesheet rules keyed by selector
-- `viewport` — current viewport dimensions + DPR
-
-**Programmatic:**
-```js
-import { captureDomSnapshot } from "pursor";
-
-const snapshot = await captureDomSnapshot({
-  url: "https://example.com",
-  out: "./snapshot.dom.json",
-});
-console.log(snapshot.selectorMap.length, "elements found");
-```
-
----
+Captures serialized HTML, computed CSS for every visible element, and a selector map (`id`, `role`, `accessible name`, `text`, `xpath`, `css selector`, viewport-relative `rect`). Great for regression diffing without re-running a browser.
 
 ## CI Output
 
-Sweep plans automatically generate CI-compatible output files alongside
-the HTML report — no extra config needed.
+Every sweep writes three sidecar artifacts alongside `sweep.json`:
 
-```bash
-pursor sweep ./plan.json
-# Produces in the output directory:
-#   sweep.json       — raw summary
-#   index.html       — visual HTML dashboard
-#   sweep.junit.xml  — JUnit XML (GitLab CI, Jenkins, CircleCI)
-#   sweep.github.json — GitHub Actions annotations format
-#   sweep.md         — Markdown summary
-```
-
-### GitHub Actions integration
-
-```yaml
-- name: Visual QA
-  run: npx pursor@latest sweep ./plan.json
-- name: Annotate
-  uses: actions/github-script@v7
-  with:
-    script: |
-      const fs = require('fs');
-      const { annotations } = JSON.parse(fs.readFileSync('sweep-output/sweep.github.json'));
-      annotations.forEach(a => core.error(a.message, {file: a.filename, title: a.title}));
-```
-
-### JUnit in GitLab CI
-
-```yaml
-visual-qa:
-  script: npx pursor@latest sweep ./plan.json
-  artifacts:
-    reports:
-      junit: sweep-output/sweep.junit.xml
-```
-
----
-
-## Auto-heal Selectors
-
-In sweep plans, selectors can be an array of fallback strategies.
-pursor tries each one in order until a visible element is found:
-
-```json
-{
-  "name": "login-flow",
-  "base": "https://example.com",
-  "steps": [
-    {
-      "name": "click-login",
-      "hover": {
-        "selector": [
-          "text=Login",
-          "button[type=submit]",
-          "#login-btn",
-          "a[href*='login']"
-        ]
-      }
-    }
-  ]
-}
-```
-
-**Supported selector types:**
-- `text=Login` — Playwright text locator (substring, or `text==Login` for exact)
-- `text~regex` — regex text match
-- `role=button|Submit` — ARIA role with accessible name
-- `aria=label` — accessibility label
-- `placeholder=Email` — placeholder text
-- CSS selectors — any valid CSS selector as fallback
-
----
-
-## Sweep Plans
-
-Batch capture plans in JSON. Each step runs one operation.
-
-```json
-{
-  "name": "checkout-flow",
-  "base": "https://example.com",
-  "outDir": "./sweep-checkout",
-  "steps": [
-    { "name": "homepage",   "shoot": { "preset": "desktop-1280", "cursor": "default" } },
-    { "name": "mobile-view","shoot": { "preset": "mobile-375", "grid": true } },
-    { "name": "nav-hover",  "hover": { "selector": "text=Products", "settleMs": 400 } },
-    { "name": "add-to-cart","frames": { "count": 6, "intervalMs": 200 } },
-    { "name": "diff",       "diff":  { "ref": "baseline" } }
-  ]
-}
-```
-
-**Step operations:** `shoot`, `hover`, `frames`, `diff`, `audit`, or any
-registered plugin sweep-op.
-
----
-
-## Plugin API
-
-Extend `pursor` with custom viewport presets, sweep operations, or
-capture hooks:
-
-```js
-export default {
-  name: "my-plugin",
-  viewport: {
-    "my-laptop": { width: 1440, height: 900, dpr: 2, label: "MBP 14" },
-  },
-  sweepOp: {
-    lighthouse: async (ctx, opts) => {
-      // run lighthouse audit, write result at ctx.out
-      return { score: 95 };
-    },
-  },
-  beforeShoot: async (ctx) => { /* mutate ctx.flags */ },
-  afterShoot:  async (ctx, meta) => { /* augment sidecar */ },
-};
-```
-
-```bash
-pursor shoot https://example.com --plugin ./my-plugin.js
-```
-
-Publish as `pursor-plugin-*` for auto-discovery.
-
-### Built-in plugins
-
-- **`plugin-audit`** — adds `audit` sweep-op (axe-core WCAG audit) and
-  `every-viewport` sweep-op (capture at every preset). Adds `audit-canvas`
-  viewport preset.
-- **`plugin-demo`** — Reference implementation showing every plugin API
-  hook: viewport presets, `nav` sweep-op (navbar walker), `beforeShoot`/
-  `afterShoot` sidecar augmentation, and flag help.
-
----
-
-## All CLI flags
-
-| Flag | Type | Default | Description |
-|---|---|---|---|
-| `--preset` | string | `desktop-1280` | Named viewport preset |
-| `--width` / `--height` | number | — | Custom viewport size |
-| `--dpr` | number | `1` | Device pixel ratio |
-| `--cursor` | string | `default` | `pointer`, `grab`, `crosshair`, `none` |
-| `--grid` | bool | `false` | Overlay grid |
-| `--grid-tile` | number | `64` | Grid tile size (px) |
-| `--grid-color` | string | `rgba(255,0,255,0.35)` | Grid line color |
-| `--layer` | string | `all` | `entity`, `terrain`, `hud`, `ui` |
-| `--no-animation` | bool | `false` | Freeze CSS animations |
-| `--no-hud` | bool | `false` | Hide HUD elements |
-| `--wait-frame` | number | `600` | Wait ms for canvas stability |
-| `--zoom` | number | `1` | Zoom level |
-| `--panX` / `--panY` | number | `0` | Camera pan offset (px) |
-| `--full` | bool | `false` | Full-page (not just viewport) |
-| `--tags` | string | — | Comma-separated WCAG tags for audit |
-| `--plugin` | path | — | Load a plugin file (repeatable) |
-| `@file` | prefix | — | Read next arg from file |
-
----
+- `sweep.junit.xml` - JUnit XML for Jenkins / GitLab / CircleCI
+- `sweep.github.json` - GitHub Actions annotation file
+- `sweep.md` - Human-readable Markdown summary with diffs + failures
 
 ## Library API
 
-All functions available as named or default import:
-
 ```js
-import { runShoot, runSweep, runAudit, captureDomSnapshot } from "pursor";
-// Or:
-import PurrVisual from "pursor";
+import {
+  runProbe, runShot, runShoot, runSweep, runDiff, runAudit,
+  captureDomSnapshot, resolveHealedSelector,
+  saveBaseline, diffKey,
+  startHarCapture, stopHarCapture, writeHar,
+  loadAuthState,
+  PursorMCPServer, loadMcpConfig,
+  validateSweepPlan,
+  listResources, readResource,
+  listViewports, resolveViewport, VIEWPORTS,
+  loadPlugins, registerPlugin, getSweepOp,
+  VERSION,
+} from "pursr";
 ```
-
-### Capture functions
-
-| Function | Returns | Never throws |
-|---|---|---|
-| `runShoot({url, out, flags?, prepare?, browser?})` | `{ url, out, ts, status, title, viewport, flags, error? }` | ✅ |
-| `runShot(url, out, opts?)` | `{ url, out, status, title, fullPage }` | — |
-| `runProbe(url)` | `{ url, status, title, navError, viewport }` | — |
-| `runFrames({url, count?, intervalMs?, outDir?, flags?, browser?})` | `{ url, files[], viewport, ... }` | — |
-| `runHover({url, selector, out, flags?})` | `{ url, out, selector, viewport, ... }` | — |
-| `runDiff(url, refPath, out, threshold?, browser?)` | `{ url, refPath, numDiff, diffPct, equal, error? }` | — |
-| `runWait(url, selector, timeoutMs?)` | `{ url, selector, found, timeoutMs }` | — |
-| `runClick(url, selector, out?)` | `{ url, selector, clicked, out }` | — |
-| `runType(url, selector, text, out?)` | `{ url, selector, text, typed, out }` | — |
-| `runSeq(url, actionsJson, out?)` | `{ url, out, steps[], failed? }` | — |
-| `runEval(url, js, out?)` | `{ url, result, out, ... }` | — |
-| `runSweep(planPath, outDir?)` | `{ name, steps[], outDir, ... }` | ✅ (per-step) |
-| `runAudit({url, tags?, outDir?, screenshot?, flags?})` | `{ url, violations, violationSummary, highlightedScreenshot?, ... }` | — |
-| `captureDomSnapshot({url, out, flags?})` | `{ url, title, dom, selectorMap[], styles, viewport }` | — |
-
-### Viewport helpers
-
-| Export | Description |
-|---|---|
-| `listViewports()` | All registered presets (built-in + plugin) |
-| `resolveViewport(flags)` | Resolve `--preset` / `--width` / `--height` to viewport object |
-| `VIEWPORTS` | Built-in preset map |
-| `applyCamera(page, opts)` | Zoom/pan via mouse wheel + drag on canvas |
-| `waitForStableFrame(page, ms)` | Poll canvas until stable for `ms` |
-
-### Plugin system
-
-| Export | Description |
-|---|---|
-| `loadPlugins(paths?)` | Auto-load built-in plugins + user paths |
-| `registerPlugin(plugin)` | Register a plugin manually |
-| `listPlugins()` | Names of loaded plugins |
-| `getSweepOp(name)` | Get a registered sweep operation |
-| `getViewportPreset(name)` | Get a registered viewport preset |
-| `listViewportPresets()` | All plugin-registered presets |
-| `getFlagHelp()` | All plugin-registered flag descriptions |
-
-### Selector healing
-
-| Export | Description |
-|---|---|
-| `resolveHealedSelector(page, selector, opts?)` | Try selector chain, return first visible match |
-| `healStepAction(page, action)` | Mutate action.selector → resolved selector |
-
-### CI output
-
-| Export | Description |
-|---|---|
-| `writeCiOutput(summary, dir)` | Write JUnit XML + GitHub annotations + Markdown |
-
-### MCP Server
-
-| Export | Description |
-|---|---|
-| `PurrVisualMCPServer` | MCP stdio server class |
-| `loadMcpConfig()` | Load config from env or `~/.pursor/mcp-config.json` |
-| `MCP_VERSION` | MCP protocol version string |
-
-### Low-level (plugin authors)
-
-| Export | Source |
-|---|---|
-| `launch()` / `newPage(browser, viewport)` | `runway.js` |
-| `resolveLocator(page, selector)` / `parseTextSelector(s)` | `selector.js` |
-| `parseFlags(argv)` / `asNum(v, dflt)` / `asBool(v, dflt)` | `util.js` |
-| `nowIso()` / `shortHash(buf)` / `escapeHtml(s)` | `util.js` |
-| `readArg(arg)` / `makeOut(name)` / `findStepPng(dir, name)` | `util.js` |
-| `renderSweepHtml(summary)` | `util.js` |
 
 ### Subpath exports
 
 ```js
-import { resolveLocator } from "pursor/selector";
-import { launch } from "pursor/runway";
-import { parseFlags } from "pursor/util";
-import { overlayGrid } from "pursor/overlays";
-import { captureDomSnapshot } from "pursor/dom-snapshot";
-import { runAudit } from "pursor/plugin-audit";
-import { resolveHealedSelector } from "pursor/selector-heal";
-import { writeCiOutput } from "pursor/ci-output";
-import { PurrVisualMCPServer } from "pursor/mcp";
+import { resolveLocator } from "pursr/selector";
+import { launch } from "pursr/runway";
+import { parseFlags, asNum } from "pursr/util";
+import { overlayGrid } from "pursr/overlays";
+import { captureDomSnapshot } from "pursr/dom-snapshot";
+import { runAudit } from "pursr/plugin-audit";
+import { resolveHealedSelector } from "pursr/selector-heal";
+import { writeCiOutput } from "pursr/ci-output";
+import { diffKey, saveBaseline, loadBaseline } from "pursr/baseline";
+import { validateSweepPlan } from "pursr/sweep-schema";
+import { startHarCapture, stopHarCapture } from "pursr/har";
+import { saveAuthState, loadAuthState } from "pursr/auth";
+import { listResources, readResource } from "pursr/mcp-resources";
+import { PursorMCPServer } from "pursr/mcp";
 ```
 
----
+## Plugins
 
-## Sidecar JSON
+A plugin is a plain ES module that exports a default object:
 
-Every capture writes a `.json` sidecar next to its PNG with metadata
-(url, viewport, flags, timestamp, file size, SHA1 hash). DOM snapshots
-write `.dom.json` with full element map. Audit reports write full
-axe-core results to `audit.json`.
+```js
+// plugins/my-plugin.js
+export default {
+  name: "my-plugin",
+  viewport: { "my-laptop": { width: 1440, height: 900, dpr: 2, label: "MBP 14" } },
+  sweepOp: {
+    lighthouse: async (ctx, opts) => { /* ... */ },
+  },
+  beforeShoot: async (ctx) => { /* mutate ctx.flags / ctx.viewport */ },
+  afterShoot:  async (ctx, meta) => { /* augment sidecar */ },
+  flagHelp:    { "my-flag": "what it does" },
+};
+```
 
----
+Plugins are auto-loaded from `plugins/` (built-in) or via `--plugin <path>`.
+
+## Architecture
+
+```
+src/
+  index.js          - public library entry
+  mcp.js            - MCP stdio server (JSON-RPC 2.0)
+  shoot.js          - runShoot (overlays + camera + frame-stable)
+  sweep.js          - runSweep (validated, parallel pool)
+  diff.js           - pixelmatch wrapper
+  plugin-audit.js   - axe-core injection + highlighted screenshot
+  dom-snapshot.js   - full DOM + CSSOM + selector map
+  selector-heal.js  - auto-heal chain resolver
+  ci-output.js      - JUnit / GitHub / Markdown
+  baseline.js       - visual regression storage
+  har.js            - HAR 1.2 network capture
+  auth.js           - Playwright storageState
+  sweep-schema.js   - plan validator
+  mcp-resources.js  - MCP resources adapter
+  overlays.js       - page-side CSS overlays + camera
+  runway.js         - Playwright launcher + system-Chrome detector
+  viewport.js       - built-in viewport presets
+  selector.js       - text=/role=/aria=/placeholder= parser
+  plugin.js         - plugin registry + hook runner
+  util.js           - flags, args, hashing, HTML escape, renderSweepHtml
+  every-viewport.js - one shot per preset in parallel
+  frames.js, hover.js, shot.js, eval.js, probe.js, interact.js
+```
 
 ## Development
 
 ```bash
-git clone <this repo>
-cd pursor
+git clone https://github.com/0xheycat/pursr
+cd pursr
 npm install
 npm install --save-dev playwright-core
 npm test
 ```
 
-All 32 tests use Node's built-in test runner. Coverage: unit tests for
-viewport resolution, flag parsing, selector parsing, HTML escaping, hashing,
-and end-to-end smoke tests for the full CLI pipeline.
+`npm test` runs 47 unit + integration tests (Node's built-in test runner, zero test deps). Coverage includes: viewport resolution, flag parsing, selector parsing, HTML escaping, hashing, baseline storage, sweep-plan validation, MCP resources, HAR 1.2 shape, auth state, and end-to-end CLI smoke tests.
 
 ```
-src/           — 22 modules
-test/          — 32 tests, 0 failures
-plugins/       — 2 built-in plugins, auto-loaded
+src/           - 25 modules
+test/          - 47 tests, 0 failures
+plugins/       - 2 built-in plugins, auto-loaded
 ```
 
----
+## Roadmap
+
+- [x] Visual baselines (save / approve / diff)
+- [x] Sweep plan schema validation
+- [x] MCP resources (browse past captures from your AI host)
+- [x] HAR 1.2 capture
+- [x] Auth state (Playwright storageState)
+- [x] Parallel sweep workers
+- [ ] Watch mode (`pursr watch <url>`)
+- [ ] Component-level snapshot (`pursr snap <selector>`)
+- [ ] PDF report export
+- [ ] Cloud output adapters (S3 / GCS)
+- [ ] AI diff summary (vision model)
 
 ## License
 
-MIT
+MIT (c) 2026 - [0xheycat](https://github.com/0xheycat)

@@ -106,6 +106,14 @@ export async function runSeq(url, actionsJson, out) {
             step.deltaX = a.deltaX; step.deltaY = a.deltaY; break;
           }
           case "navigate": { await gotoOrThrow(page, a.url); step.url = a.url; break; }
+          case "press": {
+            // a.key can be a single key ("Escape") or comma-separated ("Tab,Enter")
+            const raw = String(a.key ?? "").trim();
+            if (!raw) throw new Error("press: missing key");
+            const keys = raw.split(",").map(k => k.trim()).filter(Boolean);
+            for (const k of keys) await page.keyboard.press(k);
+            step.key = raw; step.count = keys.length; break;
+          }
           case "sleep": { await page.waitForTimeout(Number(a.ms ?? 1000)); step.ms = a.ms; break; }
           case "hover": {
             const loc = await resolveLocator(page, a.selector);

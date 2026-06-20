@@ -1,12 +1,19 @@
 {
-  "name": "pursor",
-  "version": "0.1.0",
+  "name": "pursr",
+  "version": "0.4.0",
   "private": false,
-  "description": "Visual QA & audit & MCP for the browser. Capture, sweep, and review any web target with multi-viewport, layered, animated, hover, grid, and cursor states.",
+  "description": "Visual QA, audit, and MCP for the browser. One CLI + one MCP server for screenshots, sweeps, baselines, diffs, axe-core a11y audits, HAR capture, and auth state — with parallel sweep workers, auto-healing selectors, and a plugin system. Zero browser bundled: drives your system Chrome via Playwright.",
+  "homepage": "https://github.com/0xheycat/pursr",
+  "bugs": "https://github.com/0xheycat/pursr/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xheycat/pursr.git"
+  },
+  "funding": "https://github.com/sponsors/0xheycat",
   "type": "module",
   "bin": {
-    "pursor": "./bin/pursor.mjs",
-    "pursor-mcp": "./bin/pursor-mcp.mjs"
+    "pursr": "./bin/pursr.mjs",
+    "pursr-mcp": "./bin/pursr-mcp.mjs"
   },
   "main": "./src/index.js",
   "exports": {
@@ -22,13 +29,19 @@
     "./plugin-audit": "./src/plugin-audit.js",
     "./selector-heal": "./src/selector-heal.js",
     "./ci-output": "./src/ci-output.js",
-    "./mcp": "./src/mcp.js"
+    "./mcp": "./src/mcp.js",
+    "./baseline": "./src/baseline.js",
+    "./sweep-schema": "./src/sweep-schema.js",
+    "./mcp-resources": "./src/mcp-resources.js",
+    "./har": "./src/har.js",
+    "./auth": "./src/auth.js"
   },
   "files": [
     "bin",
     "src",
     "plugins",
     "plans",
+    "assets",
     "README.md",
     "LICENSE"
   ],
@@ -45,10 +58,17 @@
     "visual-regression",
     "screenshot",
     "audit",
-    "isometric",
+    "accessibility",
+    "axe-core",
     "playwright",
+    "mcp",
+    "model-context-protocol",
+    "baseline",
+    "diff",
+    "har",
     "testing",
-    "devtools"
+    "devtools",
+    "pursr"
   ],
   "license": "MIT",
   "dependencies": {

@@ -30,10 +30,10 @@ jobs:
       - name: Start a tiny static server
         run: |
           mkdir -p /tmp/site
-          echo '<!doctype html><html><body><h1>purr-visual smoke</h1><button>Click</button></body></html>' > /tmp/site/index.html
+          echo '<!doctype html><html><body><h1>pursr smoke</h1><button>Click</button></body></html>' > /tmp/site/index.html
           (cd /tmp/site && python3 -m http.server 8080 &) && sleep 2
       - name: Probe + viewports smoke
         run: |
-          node bin/purr-visual.mjs viewports
-          node bin/purr-visual.mjs probe http://localhost:8080/index.html
-          node bin/purr-visual.mjs shot http://localhost:8080/index.html /tmp/site/shot.png
+          node bin/pursr.mjs viewports
+          node bin/pursr.mjs probe http://localhost:8080/index.html
+          node bin/pursr.mjs shot http://localhost:8080/index.html /tmp/site/shot.png

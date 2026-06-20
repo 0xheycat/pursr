@@ -9,6 +9,8 @@ import {
 } from "./overlays.js";
 import { asNum, asBool, nowIso, writeSidecar, requireArg } from "./util.js";
 import { runBeforeShoot, runAfterShoot } from "./plugin.js";
+import { startHarCapture, stopHarCapture, writeHar } from "./har.js";
+import { loadAuthState } from "./auth.js";
 
 export async function runShoot({ url, out, flags = {}, prepare, browser: extBrowser }) {
   requireArg("url", url, "string");
@@ -18,7 +20,9 @@ export async function runShoot({ url, out, flags = {}, prepare, browser: extBrow
   const cleanups = [];
   try {
     return await (async () => {
-      const page = await newPage(browser, viewport);
+      const page = await newPage(browser, viewport, {
+        storageState: flags["auth-state"] ? loadAuthState({ project: flags["auth-project"] || "default", name: flags["auth-state"] }) : undefined,
+      });
       const r = await gotoOrThrow(page, url);
       await settle(page);
 
@@ -41,8 +45,16 @@ export async function runShoot({ url, out, flags = {}, prepare, browser: extBrow
         await page.waitForTimeout(400);
       }
 
+      // Optional HAR capture
+      const harState = flags.har ? await startHarCapture(page) : null;
       await page.screenshot({ path: out, fullPage: asBool(flags.full, false) });
       const meta = { url, out, ts: nowIso(), status: r.status, title: r.title, viewport, flags: { ...flags } };
+      if (harState) {
+        const har = stopHarCapture(page);
+        const harFile = await writeHar(har, String(flags.har));
+        meta.har = harFile;
+        meta.harEntryCount = har?._meta?.entryCount || 0;
+      }
       await runAfterShoot(ctx, meta);
       return meta;
     })().catch(e => ({ url, out, ts: nowIso(), error: e.message, viewport, flags: { ...flags } }));

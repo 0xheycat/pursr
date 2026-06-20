@@ -34,6 +34,12 @@ import { resolveHealedSelector, healStepAction } from "./selector-heal.js";
 import { writeCiOutput } from "./ci-output.js";
 import { PursorMCPServer, loadConfig as loadMcpConfig, MCP_VERSION } from "./mcp.js";
 import { createRequire } from "node:module";
+import { saveBaseline, loadBaseline, listBaselines, approveBaseline, diffKey, resolveBaselinePath } from "./baseline.js";
+import { validateSweepPlan, registerSweepOp } from "./sweep-schema.js";
+import { listResources, readResource, recordResource } from "./mcp-resources.js";
+import { startHarCapture, stopHarCapture, writeHar } from "./har.js";
+import { saveAuthState, loadAuthState, listAuthStates, deleteAuthState } from "./auth.js";
+
 
 // Derive VERSION from package.json to prevent drift
 const __require = createRequire(import.meta.url);
@@ -59,6 +65,13 @@ export {
   resolveHealedSelector, healStepAction,
   writeCiOutput,
   PursorMCPServer, loadMcpConfig, MCP_VERSION,
+  // v4: baselines, sweep validation, MCP resources
+  saveBaseline, loadBaseline, listBaselines, approveBaseline, diffKey, resolveBaselinePath,
+  validateSweepPlan, registerSweepOp,
+  listResources, readResource, recordResource,
+  // v5: HAR capture, auth state, parallel sweep
+  startHarCapture, stopHarCapture, writeHar,
+  saveAuthState, loadAuthState, listAuthStates, deleteAuthState,
   VERSION,
 };
 
@@ -75,5 +88,8 @@ export default {
   resolveHealedSelector, healStepAction,
   writeCiOutput,
   PursorMCPServer, loadMcpConfig, MCP_VERSION,
+  saveBaseline, loadBaseline, listBaselines, approveBaseline, diffKey, resolveBaselinePath,
+  validateSweepPlan, registerSweepOp,
+  listResources, readResource, recordResource,
   VERSION,
 };
