@@ -12,3 +12,6 @@ npm-debug.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Local smoke test output (not for vcs)
+mcp-audit-*/
