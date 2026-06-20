@@ -39,6 +39,8 @@ import { validateSweepPlan, registerSweepOp } from "./sweep-schema.js";
 import { listResources, readResource, recordResource } from "./mcp-resources.js";
 import { startHarCapture, stopHarCapture, writeHar } from "./har.js";
 import { saveAuthState, loadAuthState, listAuthStates, deleteAuthState } from "./auth.js";
+import { startWatch, matchGlob, shouldFire } from "./watch.js";
+import { runSnap, approveSnapsAsBaselines } from "./snap.js";
 
 
 // Derive VERSION from package.json to prevent drift
@@ -72,6 +74,9 @@ export {
   // v5: HAR capture, auth state, parallel sweep
   startHarCapture, stopHarCapture, writeHar,
   saveAuthState, loadAuthState, listAuthStates, deleteAuthState,
+  // v6: watch mode, component snapshot
+  startWatch, matchGlob, shouldFire,
+  runSnap, approveSnapsAsBaselines,
   VERSION,
 };
 

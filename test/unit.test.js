@@ -384,3 +384,46 @@ test("parallel sweep config: plan.parallel is exposed in runSweep shape", async 
   assert.equal(poolSize({ parallel: -5 }), 1);
   assert.equal(poolSize({ parallel: "abc" }), 1); // NaN -> 1
 });
+
+import { matchGlob, shouldFire } from "../src/watch.js";
+
+test("matchGlob handles * and ** patterns", () => {
+  assert.equal(matchGlob("src/a.css", "**/*.css"), true);
+  assert.equal(matchGlob("a/b/c.js", "**/*.js"), true);
+  assert.equal(matchGlob("a.css", "*.css"), true);
+  assert.equal(matchGlob("a/b.css", "*.css"), false, "* should not cross /");
+  assert.equal(matchGlob("a/b/c.txt", "src/**/*.txt"), false);
+  assert.equal(matchGlob("src/a/b/c.txt", "src/**/*.txt"), true);
+  assert.equal(matchGlob("a/b.js", "a/*.js"), true);
+  assert.equal(matchGlob("a.css", "**/*.js"), false);
+});
+
+test("matchGlob normalizes backslashes", () => {
+  assert.equal(matchGlob("src\\a\\b.css", "src/**/*.css"), true);
+  assert.equal(matchGlob("src\\a.css", "src/*.css"), true);
+});
+
+test("matchGlob ? matches single char (not /)", () => {
+  assert.equal(matchGlob("foo.js", "fo?.js"), true);
+  assert.equal(matchGlob("fo/js", "fo?.js"), false, "? should not match /");
+  assert.equal(matchGlob("a.css", "?.css"), true);
+});
+
+test("shouldFire passes through when no globs", () => {
+  assert.equal(shouldFire("anything.css", null), true);
+  assert.equal(shouldFire("anything.css", []), true);
+});
+
+test("shouldFire matches against any glob", () => {
+  assert.equal(shouldFire("src/sub/a.css", ["src/**/*.css"]), true);
+  assert.equal(shouldFire("lib/a.js", ["src/**/*.css"]), false);
+  assert.equal(shouldFire("x/a.html", ["src/**/*.css", "**/*.html"]), true);
+});
+
+test("matchGlob special characters are escaped", () => {
+  // Dots should be literal
+  assert.equal(matchGlob("aXcss", "a.css"), false, ". should be literal");
+  assert.equal(matchGlob("a.css", "a.css"), true);
+  // $ should be literal
+  assert.equal(matchGlob("a$bc", "a\\$bc"), true);
+});

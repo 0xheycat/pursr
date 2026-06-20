@@ -16,7 +16,8 @@ import { runAudit } from "../src/plugin-audit.js";
 import { captureDomSnapshot } from "../src/dom-snapshot.js";
 import { listViewports } from "../src/viewport.js";
 import { parseFlags, asNum, readArg, makeOut, pickOutPath } from "../src/util.js";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { readFileSync as _readFileSync } from "node:fs";
 const readFile = _readFileSync;
 import { loadPlugins, listPlugins, getFlagHelp } from "../src/plugin.js";
@@ -42,6 +43,16 @@ function die(msg, code = 2) {
 const argv = process.argv;
 const [, , cmd, a, b, c, d] = argv;
 const url = process.env.PURSOR_URL || a;
+// Top-level --plan / --out parsing for subcommands that need it before dispatch
+function _topOpts() {
+  const o = {};
+  for (let i = 2; i < argv.length; i++) {
+    if (argv[i] === "--plan" && i + 1 < argv.length) o.plan = argv[++i];
+    if (argv[i] === "--out" && i + 1 < argv.length) o.out = argv[++i];
+  }
+  return o;
+}
+const opts = _topOpts();
 
 // Plugin loading: scan for --plugin <path> and built-in plugins/
 const pluginPaths = [];
@@ -215,6 +226,62 @@ await loadPlugins(pluginPaths);
                 console.log(JSON.stringify({ deleted: ok }, null, 2));
               } else {
                 die("auth subcommand: list | save | load | delete");
+              }
+              break;
+            }
+            case "watch": {
+              // pursr watch <url> [--out ./shot.png] [--on <glob>...] [--plan <plan.json>]
+              if (opts.plan) {
+                if (!existsSync(opts.plan)) die("watch: plan not found: " + opts.plan);
+              } else if (!url) {
+                die("watch: missing <url> (or use --plan <plan.json>)");
+              }
+              const { startWatch } = await import("../src/watch.js");
+              const out = (b && !b.startsWith("--")) ? b : (opts.out || makeOut("watch.png"));
+              if (out && out !== "--plan") mkdirSync(dirname(out), { recursive: true });
+              const flags = parseFlags(argv.slice(3));
+              const onGlobs = [];
+              for (let i = 0; i < argv.length; i++) {
+                if (argv[i] === "--on" && i + 1 < argv.length) onGlobs.push(argv[++i]);
+              }
+              console.error(JSON.stringify({ watching: true, url: opts.plan ? null : url, plan: opts.plan || null, out, on: onGlobs }));
+              const w = await startWatch({
+                url: opts.plan ? undefined : url,
+                out,
+                plan: opts.plan,
+                on: onGlobs,
+                flags,
+                verbose: true,
+                onChange: (e) => console.error(JSON.stringify({ event: e.type, path: e.path, captureOk: !e.capture?.error, captureOut: e.capture?.out, ts: e.ts })),
+              });
+              // Keep alive until SIGINT
+              await new Promise((resolve) => {
+                process.on("SIGINT", () => { console.error("[pursr watch] stopping..."); w.close().then(resolve); });
+                process.on("SIGTERM", () => { w.close().then(resolve); });
+              });
+              console.log(JSON.stringify({ fires: w.fires() }, null, 2));
+              break;
+            }
+            case "snap": {
+              // pursr snap <url> <selector> [--out <dir>] [--name <slug>] [--max N] [--baseline <project>]
+              if (!url) die("snap: missing <url>");
+              const sel = b; if (!sel) die("snap: missing <selector>");
+              const flags = parseFlags(argv.slice(4));
+              const { runSnap, approveSnapsAsBaselines } = await import("../src/snap.js");
+              const outDir = flags.out || makeOut("snaps").replace(/pursor-[^-]+-snap\.png$/, "snaps");
+              const snap = await runSnap({ url, selector: sel, outDir, name: flags.name, max: flags.max, flags });
+              console.log(JSON.stringify({
+                url: snap.url,
+                selector: snap.selector,
+                count: snap.count,
+                captured: snap.captured,
+                outDir: snap.outDir,
+                captures: snap.captures,
+                nav: snap.nav,
+              }, null, 2));
+              if (flags.baseline) {
+                const r = approveSnapsAsBaselines({ project: flags.baseline, snapResult: snap });
+                console.error(JSON.stringify({ approved: r.length, project: flags.baseline }));
               }
               break;
             }

@@ -413,11 +413,11 @@ npm install --save-dev playwright-core
 npm test
 ```
 
-`npm test` runs 47 unit + integration tests (Node's built-in test runner, zero test deps). Coverage includes: viewport resolution, flag parsing, selector parsing, HTML escaping, hashing, baseline storage, sweep-plan validation, MCP resources, HAR 1.2 shape, auth state, and end-to-end CLI smoke tests.
+`npm test` runs 53 unit + integration tests (Node's built-in test runner, zero test deps). Coverage includes: viewport resolution, flag parsing, selector parsing, HTML escaping, hashing, baseline storage, sweep-plan validation, MCP resources, HAR 1.2 shape, auth state, and end-to-end CLI smoke tests.
 
 ```
 src/           - 25 modules
-test/          - 47 tests, 0 failures
+test/          - 53 tests, 0 failures
 plugins/       - 2 built-in plugins, auto-loaded
 ```
 
@@ -429,12 +429,43 @@ plugins/       - 2 built-in plugins, auto-loaded
 - [x] HAR 1.2 capture
 - [x] Auth state (Playwright storageState)
 - [x] Parallel sweep workers
-- [ ] Watch mode (`pursr watch <url>`)
-- [ ] Component-level snapshot (`pursr snap <selector>`)
+- [x] Watch mode (`pursr watch <url>`)
+- [x] Component-level snapshot (`pursr snap <selector>`)
 - [ ] PDF report export
 - [ ] Cloud output adapters (S3 / GCS)
 - [ ] AI diff summary (vision model)
 
+## Watch Mode (v0.5.0)
+
+```bash
+# Re-shoot every time a CSS or HTML file changes
+pursr watch https://my.app --on src/**/*.css --on src/**/*.html
+
+# Re-run a sweep plan on file change
+pursr watch --plan ./plan.json --on src/**/*.{css,html}
+
+# Default (no --on) = watch everything in cwd
+pursr watch https://my.app
+```
+
+Glob patterns: * (one path segment), ** (any depth), ? (one char), backslash-X (literal X). Debounce is 300ms by default.
+
+## Component Snapshots (v0.5.0)
+
+```bash
+# Capture one screenshot per matched element
+pursr snap https://my.app a.btn --out ./snaps --max 20
+
+# Use auto-heal selector chain
+pursr snap https://my.app "text=Sign up" --out ./snaps
+
+# Promote to baselines in one command
+pursr snap https://my.app article.product --baseline myapp
+```
+
+Each capture is clipped precisely to the elements bounding box (even when scrolled offscreen), labelled with aria-label / text / tag, and written to ./snaps/<index>-<label>.png + snap.json summary.
+
+---
 ## License
 
 MIT (c) 2026 - [0xheycat](https://github.com/0xheycat)
