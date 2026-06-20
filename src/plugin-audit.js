@@ -10,6 +10,7 @@
 // Dependencies: axe-core (npm i axe-core)
 
 import { launch, newPage } from "./runway.js";
+import { createRequire } from "node:module";
 import { resolveViewport } from "./viewport.js";
 import { gotoOrThrow, settle } from "./overlays.js";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
@@ -87,11 +88,29 @@ let _axeSource = null;
 async function getAxeSource() {
   if (_axeSource) return _axeSource;
   // Try node_modules/axe-core
+  // Primary: use createRequire to resolve axe-core from this module (works for the
+  // pursr package itself, the linked repo, or any project that has axe-core installed).
+  try {
+    const req = createRequire(import.meta.url);
+    const resolved = req.resolve("axe-core");
+    const dir = resolved.replace(/[\\\/][^\\\/]+$/, "");
+    for (const fname of ["axe.min.js", "axe.js"]) {
+      const p = dir + "/" + fname;
+      if (existsSync(p)) { _axeSource = readFileSync(p, "utf8"); return _axeSource; }
+    }
+  } catch { /* fall through to path-based lookup */ }
   const paths = [
     join(process.cwd(), "node_modules", "axe-core", "axe.min.js"),
     join(process.cwd(), "node_modules", "axe-core", "axe.js"),
     new URL("..", import.meta.url).pathname && join(dirname(new URL(import.meta.url).pathname), "node_modules", "axe-core", "axe.min.js"),
     join(dirname(process.execPath), "node_modules", "axe-core", "axe.min.js"),
+    // Global npm install (Windows: %APPDATA%\npm\node_modules, Unix: /usr/lib/node_modules)
+    join(process.env.APPDATA || "", "npm", "node_modules", "axe-core", "axe.min.js"),
+    join(process.env.HOME || "", ".npm-global", "lib", "node_modules", "axe-core", "axe.min.js"),
+    join("/usr", "lib", "node_modules", "axe-core", "axe.min.js"),
+    join("/usr", "local", "lib", "node_modules", "axe-core", "axe.min.js"),
+    // The pursr package's own node_modules (when running from local repo or via node bin)
+    join(dirname(new URL(import.meta.url).pathname), "..", "node_modules", "axe-core", "axe.min.js"),
   ];
   for (const p of paths) {
     if (p && existsSync(p)) {
@@ -99,8 +118,7 @@ async function getAxeSource() {
       return _axeSource;
     }
   }
-  throw new Error("axe-core not found. Install: npm i axe-core");
-}
+throw new Error("axe-core not found. Install: npm i axe-core");}
 
 // ─── Group helper ───────────────────────────────────────────────────────
 

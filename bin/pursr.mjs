@@ -79,14 +79,15 @@ await loadPlugins(pluginPaths);
       case "diff": {
         if (!url) die("missing url"); const ref = b; if (!ref) die("diff: missing <ref.png>");
         const out = c || makeOut("diff.png"); const threshold = d !== undefined ? Number(d) : 0.1;
+        const flags = parseFlags(argv.slice(5));
         // --ai / --ai-model / --ai-base-url / --ai-api-key
         const useAi = argv.includes("--ai");
         const aiModel = (() => { const i = argv.indexOf("--ai-model"); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined; })();
         const aiBaseUrl = (() => { const i = argv.indexOf("--ai-base-url"); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined; })();
         const aiApiKey = (() => { const i = argv.indexOf("--ai-api-key"); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined; })();
         const r = useAi
-          ? await runDiffWithAi(url, ref, out, threshold, { model: aiModel, baseUrl: aiBaseUrl, apiKey: aiApiKey })
-          : await runDiff(url, ref, out, threshold);
+          ? await runDiffWithAi(url, ref, out, threshold, flags, { model: aiModel, baseUrl: aiBaseUrl, apiKey: aiApiKey })
+          : await runDiff(url, ref, out, threshold, flags);
         console.log(JSON.stringify(r, null, 2)); break;
       }
       case "seq": { if (!url) die("missing url"); const actions = readArg(b); if (!actions) die("seq: missing <actions.json> (or @file)"); const out = c || makeOut("seq.png"); const r = await runSeq(url, actions, out); console.log(JSON.stringify(r, null, 2)); break; }

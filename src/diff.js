@@ -3,9 +3,9 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { launch, newPage } from "./runway.js";
-import { DEFAULT_VIEWPORT } from "./viewport.js";
-import { gotoOrThrow, settle } from "./overlays.js";
-import { requireArg } from "./util.js";
+import { resolveViewport } from "./viewport.js";
+import { gotoOrThrow, settle, applyCamera, waitForStableFrame } from "./overlays.js";
+import { asNum, requireArg } from "./util.js";
 import { aiDiffSidecar } from "./ai-diff.js";
 
 const DIFF_DEFAULT_THRESHOLD = 0.1;
@@ -20,7 +20,7 @@ async function loadPixelmatch() {
   catch { throw new Error("pixelmatch not found. Install: npm i pixelmatch"); }
 }
 
-export async function runDiff(url, refPath, out, threshold, browser) {
+export async function runDiff(url, refPath, out, threshold, flags = {}, browser) {
   requireArg("url", url, "string");
   requireArg("refPath", refPath, "string");
   const t = threshold !== undefined ? Number(threshold) : DIFF_DEFAULT_THRESHOLD;
@@ -28,10 +28,21 @@ export async function runDiff(url, refPath, out, threshold, browser) {
   const PNG = await loadPngjs();
   const pixelmatch = await loadPixelmatch();
   const ownBrowser = !browser;
+  const viewport = resolveViewport(flags || {});
   browser = browser || await launch();
   try {
-    const page = await newPage(browser, DEFAULT_VIEWPORT);
+    const page = await newPage(browser, viewport);
     const r = await gotoOrThrow(page, url); await settle(page);
+    if (flags && (flags["wait-frame"] || flags["no-animation"])) {
+      await waitForStableFrame(page, asNum(flags["wait-frame"], 600));
+    }
+    if (flags && (flags.zoom || flags.panX || flags.panY)) {
+      await applyCamera(page, {
+        zoom: asNum(flags.zoom, 1),
+        panX: asNum(flags.panX, 0),
+        panY: asNum(flags.panY, 0),
+      });
+    }
     const currentPath = out ? out.replace(/\.png$/i, "-current.png") : join(dirname(refPath), "current.png");
     await page.screenshot({ path: currentPath, fullPage: false });
     const refPng = PNG.sync.read(readFileSync(refPath));
@@ -53,8 +64,8 @@ export async function runDiff(url, refPath, out, threshold, browser) {
  * summary of the visual differences. The AI summary is written to <out>.ai.json
  * and also returned on the result object.
  */
-export async function runDiffWithAi(url, refPath, out, threshold, aiOpts, browser) {
-  const r = await runDiff(url, refPath, out, threshold, browser);
+export async function runDiffWithAi(url, refPath, out, threshold, flags, aiOpts, browser) {
+  const r = await runDiff(url, refPath, out, threshold, flags, browser);
   if (r.error) return r;
   try {
     const curPath = r.currentPath;

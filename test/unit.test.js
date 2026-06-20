@@ -542,7 +542,7 @@ test("runDiffWithAi surfaces AI error gracefully (no throw)", async () => {
   try {
     // We pass missing ref -> runDiff returns early with { error }. But here we want to test the error path
     // inside runDiffWithAi when fetch fails AFTER a successful diff. Use a non-existent ref to short-circuit.
-    const r = await runDiffWithAi("https://example.invalid", "C:/__nope_ref__.png", "C:/__nope_out__.png", 0.1, { apiKey: "sk-test" });
+    const r = await runDiffWithAi("https://example.invalid", "C:/__nope_ref__.png", "C:/__nope_out__.png", 0.1, {}, { apiKey: "sk-test" });
     assert.ok(r.error, "should have an error");
   } finally { global.fetch = orig; }
 });
@@ -588,4 +588,21 @@ test("__PURSR_GET returns undefined when neither primary nor legacy is set", asy
   delete process.env["PURSR_TEST_UNDEFINED"];
   delete process.env["PURSOR_TEST_UNDEFINED"];
   assert.equal(__PURSR_GET("PURSR_TEST_UNDEFINED"), undefined);
+});
+
+
+// --- v0.7.1: runDiff honors --preset via flags arg ---
+
+test("runDiff short-circuits on missing ref regardless of flags arg", async () => {
+  const { runDiff } = await import("../src/diff.js");
+  const r = await runDiff("https://example.com", "C:/__nope__ref.png", "C:/__nope__out.png", 0.1, { preset: "mobile-375", zoom: 2 });
+  assert.equal(r.error, "reference file not found");
+  // The signature must accept flags as the 5th arg without throwing on import-time
+  // (this is a regression guard for the v0.7.1 fix).
+});
+
+test("runDiffWithAi short-circuits on missing ref when called with (url, ref, out, threshold, flags, aiOpts)", async () => {
+  const { runDiffWithAi } = await import("../src/diff.js");
+  const r = await runDiffWithAi("https://example.com", "C:/__nope__ref.png", "C:/__nope__out.png", 0.1, { preset: "mobile-375" }, { apiKey: "sk-test" });
+  assert.equal(r.error, "reference file not found");
 });

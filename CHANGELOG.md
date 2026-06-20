@@ -1,3 +1,13 @@
+## 0.7.1 (patch)
+
+**Two bug fixes from end-to-end smoke testing.**
+
+### Fixed
+
+- **`pursr diff` now honors CLI flags** (`--preset`, `--grid`, `--cursor`, `--zoom`, `--pan-x`, `--pan-y`, `--wait-frame`, `--no-animation`, etc.). Previously, `runDiff` always shot at the default 1280x800 viewport, so `pursr diff <mobile-url> <desktop-baseline> --preset mobile-375` would render the current page at desktop size and report a false-positive `size mismatch`. The fix adds a `flags` parameter to `runDiff` and `runDiffWithAi`, threads it through `bin/pursr.mjs` via `parseFlags(argv.slice(5))`, and applies viewport, camera, and wait-frame to the page before screenshot.
+- **`pursr audit` now finds `axe-core` from any cwd**. Previously, `getAxeSource` only looked in the project root, so running `pursr audit <url>` from `~` or any non-project directory errored with `axe-core not found`. The fix uses `createRequire(import.meta.url).resolve("axe-core")` as the primary lookup (which follows Node's normal module resolution and finds axe-core whether you're in the pursr repo, the published `pursr` package, or any project that installed axe-core), with the original path-based fallback list as a safety net.
+- **Tests**: added 2 regression-guard unit tests for the new `runDiff`/`runDiffWithAi` signatures. Suite is now 65/65 passing in ~14s.
+
 # Changelog
 
 ## 0.7.0 (breaking)
