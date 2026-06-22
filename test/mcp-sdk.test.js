@@ -51,7 +51,7 @@ function textResult(result) {
 test("official MCP SDK client completes a persistent visual workflow", { timeout: 60_000 }, async () => {
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [resolve("bin/pursr-mcp.mjs")],
+    args: [process.env.PURSR_MCP_BIN ? resolve(process.env.PURSR_MCP_BIN) : resolve("bin/pursr-mcp.mjs")],
     cwd: process.cwd(),
     stderr: "pipe",
   });
@@ -64,15 +64,17 @@ test("official MCP SDK client completes a persistent visual workflow", { timeout
 
   const opened = textResult(await client.callTool({
     name: "pursr_session_open",
-    arguments: { sessionId: "sdk-test", url: baseUrl, width: 800, height: 600 },
+    arguments: { sessionId: "sdk-test", url: baseUrl, width: 800, height: 600, visual: true },
   }));
   assert.equal(opened.title, "SDK transport");
+  assert.equal(opened.visual, true);
 
   const acted = textResult(await client.callTool({
     name: "pursr_act",
     arguments: { sessionId: "sdk-test", actions: [{ type: "click", selector: "#toggle" }] },
   }));
   assert.equal(acted.failed, false);
+  assert.ok(acted.trace[0].cursor);
 
   const snapshot = textResult(await client.callTool({
     name: "pursr_snapshot",

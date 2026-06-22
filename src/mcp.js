@@ -147,7 +147,7 @@ class PursrMCPServer {
     return [
       {
         name: "pursr_session_open",
-        description: "Open a persistent browser tab for iterative agent work. State, hover, scroll, dialogs, and navigation persist until closed.",
+        description: "Open a persistent browser tab in headless, visible, or CDP mode. Visual sessions render cursor movement and interaction feedback into screenshots.",
         inputSchema: {
           type: "object",
           properties: {
@@ -155,6 +155,13 @@ class PursrMCPServer {
             sessionId: { type: "string", description: "Stable session name; generated when omitted" },
             preset: { type: "string", description: "Viewport preset" },
             width: { type: "number" }, height: { type: "number" }, dpr: { type: "number" },
+            mode: { type: "string", enum: ["headless", "visible", "cdp"], description: "Browser mode (default headless)" },
+            visible: { type: "boolean", description: "Alias for mode=visible" },
+            visual: { type: "boolean", description: "Enable rendered cursor and interaction overlays" },
+            cdpUrl: { type: "string", description: "Chrome DevTools endpoint for mode=cdp, e.g. http://127.0.0.1:9222" },
+            slowMo: { type: "number", description: "Delay Playwright operations in milliseconds" },
+            operatorColor: { type: "string", description: "Visual Operator accent color" },
+            timeoutMs: { type: "number", description: "Navigation/CDP connection timeout" },
             storageState: { description: "Playwright storageState object or file path" },
           },
           required: ["url"],
@@ -180,7 +187,7 @@ class PursrMCPServer {
       },
       {
         name: "pursr_act",
-        description: "Perform ordered actions in a persistent session. Supported types: click, hover, fill, type, check, select, press, scroll, wait, sleep, navigate, reload, eval.",
+        description: "Perform ordered actions in a persistent session. Supports click, hover, fill, type, check, select, press, scroll, wait, sleep, navigate, reload, eval, move, annotate, and clearAnnotations.",
         inputSchema: {
           type: "object",
           properties: {
@@ -405,7 +412,11 @@ class PursrMCPServer {
 
   async _sessionOpen(args) {
     if (!args.url) throw new McpError(-32602, "Missing required: url");
-    const flags = { preset: args.preset, width: args.width, height: args.height, dpr: args.dpr };
+    const flags = {
+      preset: args.preset, width: args.width, height: args.height, dpr: args.dpr,
+      mode: args.mode, visible: args.visible, visual: args.visual, cdpUrl: args.cdpUrl,
+      slowMo: args.slowMo, operatorColor: args.operatorColor, timeoutMs: args.timeoutMs,
+    };
     const result = await this.sessions.open({ sessionId: args.sessionId, url: args.url, flags, storageState: args.storageState });
     return this._text(result);
   }

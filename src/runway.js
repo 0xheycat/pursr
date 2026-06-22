@@ -43,24 +43,36 @@ function findChrome() {
 
 const BROWSER_ARGS = Object.freeze(["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]);
 
-export async function launch() {
+export async function launch(options = {}) {
   const chromium = await getChromium();
   const exec = findChrome();
   if (!exec) throw new Error("system Chrome not found in standard paths");
-  return await chromium.launch({ headless: true, executablePath: exec, args: BROWSER_ARGS });
+  return await chromium.launch({
+    headless: options.headless !== false,
+    executablePath: options.executablePath || exec,
+    slowMo: Math.max(0, Number(options.slowMo) || 0),
+    args: [...BROWSER_ARGS, ...(Array.isArray(options.args) ? options.args : [])],
+  });
+}
+
+export async function connectOverCDP(endpointURL, options = {}) {
+  if (!endpointURL || typeof endpointURL !== "string") throw new Error("cdpUrl is required for CDP mode");
+  const chromium = await getChromium();
+  return await chromium.connectOverCDP(endpointURL, { timeout: options.timeoutMs || 30_000 });
 }
 
 export async function newPage(browser, viewport, opts = {}) {
-  const ctx = await browser.newContext({
-    viewport: { width: viewport.width, height: viewport.height },
-    deviceScaleFactor: viewport.dpr || 1,
-    reducedMotion: "no-preference",
-    colorScheme: "light",
-    hasTouch: !!(viewport.name && viewport.name.startsWith("mobile")),
-    isMobile: !!(viewport.name && viewport.name.startsWith("mobile")),
-    storageState: opts.storageState || undefined,
-  });
+  const ctx = opts.context || await browser.newContext({
+      viewport: { width: viewport.width, height: viewport.height },
+      deviceScaleFactor: viewport.dpr || 1,
+      reducedMotion: "no-preference",
+      colorScheme: "light",
+      hasTouch: !!(viewport.name && viewport.name.startsWith("mobile")),
+      isMobile: !!(viewport.name && viewport.name.startsWith("mobile")),
+      storageState: opts.storageState || undefined,
+    });
   const page = await ctx.newPage();
+  if (opts.context) await page.setViewportSize({ width: viewport.width, height: viewport.height }).catch(() => {});
   page._pursrContext = ctx;
   return page;
 }

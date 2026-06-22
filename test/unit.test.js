@@ -645,4 +645,8 @@ test("MCP exposes persistent browser-agent tools", async () => {
     "pursr_screenshot", "pursr_inspect", "pursr_diagnostics", "pursr_session_close",
   ]) assert.ok(names.includes(name), `missing MCP tool: ${name}`);
   assert.equal(new Set(names).size, names.length, "MCP tool names must be unique");
+  const openTool = server._toolDefs().find((tool) => tool.name === "pursr_session_open");
+  assert.deepEqual(openTool.inputSchema.properties.mode.enum, ["headless", "visible", "cdp"]);
+  assert.ok(openTool.inputSchema.properties.visual);
+  assert.ok(openTool.inputSchema.properties.cdpUrl);
 });

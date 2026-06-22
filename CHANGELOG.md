@@ -1,3 +1,29 @@
+## 0.9.0
+
+**Visual Operator for observable agent browser work.**
+
+### Added
+
+- Three persistent session modes: `headless`, `visible`, and `cdp`.
+- Rendered agent cursor that is included in screenshots returned to vision models.
+- Automatic cursor movement, target highlight, labels, and click markers for selector-based actions.
+- Visual actions: `move`, `annotate`, and `clearAnnotations`.
+- `operatorColor` and `slowMo` controls for demonstrations and visual reviews.
+- CDP attachment to an existing Chrome profile for authenticated workflows.
+- Public `pursr/visual-operator` module and `connectOverCDP` library export.
+
+### Safety
+
+- Operator colors are sanitized before being inserted into page markup or CSS.
+- CDP mode opens a new tab and disconnects without terminating the owner browser.
+- Visual mode is opt-in for headless sessions, preserving existing regression screenshots.
+
+### Tests
+
+- PNG-level visual assertion verifies that cursor, target, and click feedback are rendered.
+- CDP integration verifies attachment, interaction, and safe disconnect from a real Chrome process.
+- Existing SDK and browser regression coverage remains enabled.
+
 ## 0.8.1
 
 **Official MCP SDK transport.**

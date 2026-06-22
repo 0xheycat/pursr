@@ -25,7 +25,7 @@ import { runClick, runType, runWait, runSeq } from "./interact.js";
 import { listViewports, resolveViewport, VIEWPORTS } from "./viewport.js";
 import { applyCamera, waitForStableFrame } from "./overlays.js";
 import { loadPlugins, registerPlugin, listPlugins, getSweepOp, getViewportPreset, listViewportPresets, getFlagHelp } from "./plugin.js";
-import { launch, newPage } from "./runway.js";
+import { connectOverCDP, launch, newPage } from "./runway.js";
 import { parseFlags, asNum, asBool, nowIso, shortHash, escapeHtml, renderSweepHtml, renderEveryViewportHtml, findStepPng, readArg, makeOut } from "./util.js";
 import { resolveLocator, parseTextSelector } from "./selector.js";
 import { captureDomSnapshot, captureDomSnapshotSidecar } from "./dom-snapshot.js";
@@ -45,6 +45,10 @@ import { runCheck } from "./check.js";
 import { renderSweepPdf } from "./report.js";
 import { aiDiffSummary, aiDiffSidecar } from "./ai-diff.js";
 import { BrowserSessionManager } from "./session.js";
+import {
+  installVisualOperator, moveVisualCursor, highlightVisualTarget,
+  markVisualClick, clearVisualAnnotations, visualPointForLocator,
+} from "./visual-operator.js";
 
 
 // Derive VERSION from package.json to prevent drift
@@ -64,7 +68,7 @@ export {
   // plugin system
   loadPlugins, registerPlugin, listPlugins, getSweepOp, getViewportPreset, listViewportPresets, getFlagHelp,
   // low-level helpers (for plugin authors)
-  launch, newPage,
+  launch, connectOverCDP, newPage,
   parseFlags, asNum, asBool, nowIso, shortHash, escapeHtml, renderSweepHtml, renderEveryViewportHtml, findStepPng, readArg, makeOut,
   resolveLocator, parseTextSelector,
   // v3: selector healing, CI output, MCP server
@@ -88,6 +92,8 @@ export {
   renderSweepPdf,
   aiDiffSummary, aiDiffSidecar,
   BrowserSessionManager,
+  installVisualOperator, moveVisualCursor, highlightVisualTarget,
+  markVisualClick, clearVisualAnnotations, visualPointForLocator,
   VERSION,
 };
 
@@ -98,7 +104,7 @@ export default {
   listViewports, resolveViewport, VIEWPORTS,
   applyCamera, waitForStableFrame,
   loadPlugins, registerPlugin, listPlugins, getSweepOp, getViewportPreset, listViewportPresets, getFlagHelp,
-  launch, newPage,
+  launch, connectOverCDP, newPage,
   parseFlags, asNum, asBool, nowIso, shortHash, escapeHtml, renderSweepHtml, renderEveryViewportHtml, findStepPng, readArg, makeOut,
   resolveLocator, parseTextSelector,
   resolveHealedSelector, healStepAction,
@@ -110,5 +116,7 @@ export default {
   // v6: PDF report, AI diff summary
   runDiffWithAi, renderSweepPdf, aiDiffSummary, aiDiffSidecar,
   BrowserSessionManager,
+  installVisualOperator, moveVisualCursor, highlightVisualTarget,
+  markVisualClick, clearVisualAnnotations, visualPointForLocator,
   VERSION,
 };

@@ -2,10 +2,18 @@
 
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { launch, newPage } from "./runway.js";
+import { connectOverCDP, launch, newPage } from "./runway.js";
 import { resolveViewport } from "./viewport.js";
 import { gotoOrThrow, settle, CLICK_TIMEOUT_MS, WAIT_DEFAULT_TIMEOUT_MS } from "./overlays.js";
 import { resolveLocator } from "./selector.js";
+import {
+  clearVisualAnnotations,
+  highlightVisualTarget,
+  installVisualOperator,
+  markVisualClick,
+  moveVisualCursor,
+  visualPointForLocator,
+} from "./visual-operator.js";
 
 const MAX_DIAGNOSTICS = 250;
 const MAX_ACTIONS = 50;
@@ -37,8 +45,9 @@ function attachDiagnostics(page, diagnostics) {
 }
 
 export class BrowserSessionManager {
-  constructor({ launchBrowser = launch, outputDir = process.cwd() } = {}) {
+  constructor({ launchBrowser = launch, connectBrowser = connectOverCDP, outputDir = process.cwd() } = {}) {
     this.launchBrowser = launchBrowser;
+    this.connectBrowser = connectBrowser;
     this.outputDir = outputDir;
     this.sessions = new Map();
   }
@@ -52,24 +61,34 @@ export class BrowserSessionManager {
   }
 
   list() {
-    return [...this.sessions.values()].map(({ id, page, viewport, createdAt }) => ({ sessionId: id, url: page.url(), viewport, createdAt }));
+    return [...this.sessions.values()].map(({ id, page, viewport, mode, visual, createdAt }) => ({ sessionId: id, url: page.url(), viewport, mode, visual, createdAt }));
   }
 
   async open({ sessionId, url, flags = {}, storageState } = {}) {
     if (!url) throw new Error("url is required");
     const id = cleanId(sessionId);
     if (this.sessions.has(id)) await this.close(id);
-    const browser = await this.launchBrowser();
+    const mode = flags.mode || (flags.cdpUrl ? "cdp" : flags.visible ? "visible" : "headless");
+    if (!new Set(["headless", "visible", "cdp"]).has(mode)) throw new Error("mode must be headless, visible, or cdp");
+    const visual = flags.visual === true || mode === "visible";
+    const operatorOptions = { color: flags.operatorColor || "#ff2ea6" };
+    const browser = mode === "cdp"
+      ? await this.connectBrowser(flags.cdpUrl, { timeoutMs: flags.timeoutMs })
+      : await this.launchBrowser({ headless: mode !== "visible", slowMo: flags.slowMo });
     try {
       const viewport = resolveViewport(flags);
-      const page = await newPage(browser, viewport, { storageState });
+      const context = mode === "cdp" ? browser.contexts()[0] : null;
+      if (mode === "cdp" && !context) throw new Error("CDP browser has no default context");
+      const page = await newPage(browser, viewport, { storageState, context });
       const diagnostics = { console: [], errors: [], requests: [], responses: [] };
       attachDiagnostics(page, diagnostics);
+      if (visual) page.on("domcontentloaded", () => installVisualOperator(page, operatorOptions).catch(() => {}));
       const nav = await gotoOrThrow(page, url, { timeoutMs: flags.timeoutMs });
       await settle(page);
-      const session = { id, browser, page, context: page._pursrContext, viewport, diagnostics, createdAt: new Date().toISOString() };
+      if (visual) await installVisualOperator(page, operatorOptions);
+      const session = { id, browser, page, context: page._pursrContext, viewport, mode, visual, operatorOptions, diagnostics, createdAt: new Date().toISOString() };
       this.sessions.set(id, session);
-      return { sessionId: id, url: page.url(), title: await page.title(), viewport, status: nav.status, createdAt: session.createdAt };
+      return { sessionId: id, url: page.url(), title: await page.title(), viewport, mode, visual, status: nav.status, createdAt: session.createdAt };
     } catch (error) {
       try { await browser.close(); } catch {}
       throw error;
@@ -131,7 +150,8 @@ export class BrowserSessionManager {
   async act(sessionId, actions = []) {
     if (!Array.isArray(actions) || !actions.length) throw new Error("actions must be a non-empty array");
     if (actions.length > MAX_ACTIONS) throw new Error(`actions cannot exceed ${MAX_ACTIONS}`);
-    const { page } = this.get(sessionId);
+    const session = this.get(sessionId);
+    const { page, visual, operatorOptions } = session;
     const trace = [];
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i] || {};
@@ -141,19 +161,47 @@ export class BrowserSessionManager {
         if (["click", "hover", "fill", "type", "check", "select"].includes(op)) {
           const locator = await resolveLocator(page, action.selector);
           await locator.first().waitFor({ state: "visible", timeout: action.timeoutMs || CLICK_TIMEOUT_MS });
+          let point = null;
+          if (visual) {
+            point = await visualPointForLocator(locator.first());
+            await moveVisualCursor(page, point.x, point.y, { ...operatorOptions, durationMs: action.durationMs });
+            await highlightVisualTarget(page, point.rect, { ...operatorOptions, color: action.color, label: action.label || `${op}: ${action.selector}` });
+            step.cursor = { x: Math.round(point.x), y: Math.round(point.y) };
+          }
           if (op === "click") await locator.first().click();
           else if (op === "hover") await locator.first().hover();
           else if (op === "fill") await locator.first().fill(String(action.text ?? action.value ?? ""));
           else if (op === "type") await locator.first().pressSequentially(String(action.text ?? ""), { delay: action.delayMs || 10 });
           else if (op === "check") await locator.first().setChecked(action.checked !== false);
           else await locator.first().selectOption(action.value);
+          if (visual && op === "click" && point) await markVisualClick(page, point.x, point.y, { ...operatorOptions, color: action.color });
           step.selector = action.selector;
         } else if (op === "press") await page.keyboard.press(String(action.key));
         else if (op === "scroll") await page.mouse.wheel(Number(action.deltaX) || 0, Number(action.deltaY) || 0);
         else if (op === "wait") await (await resolveLocator(page, action.selector)).first().waitFor({ state: action.state || "visible", timeout: action.timeoutMs || WAIT_DEFAULT_TIMEOUT_MS });
         else if (op === "sleep") await page.waitForTimeout(Math.max(0, Number(action.ms) || 0));
-        else if (op === "navigate") await gotoOrThrow(page, action.url, { timeoutMs: action.timeoutMs });
-        else if (op === "reload") await page.reload({ waitUntil: "domcontentloaded" });
+        else if (op === "navigate") {
+          await gotoOrThrow(page, action.url, { timeoutMs: action.timeoutMs });
+          if (visual) await installVisualOperator(page, operatorOptions);
+        } else if (op === "reload") {
+          await page.reload({ waitUntil: "domcontentloaded" });
+          if (visual) await installVisualOperator(page, operatorOptions);
+        } else if (op === "move") {
+          if (!visual) throw new Error("move requires a visual session");
+          step.cursor = await moveVisualCursor(page, action.x, action.y, { ...operatorOptions, durationMs: action.durationMs });
+        } else if (op === "annotate") {
+          if (!visual) throw new Error("annotate requires a visual session");
+          const locator = await resolveLocator(page, action.selector);
+          await locator.first().waitFor({ state: "visible", timeout: action.timeoutMs || CLICK_TIMEOUT_MS });
+          const point = await visualPointForLocator(locator.first());
+          await moveVisualCursor(page, point.x, point.y, { ...operatorOptions, durationMs: action.durationMs });
+          await highlightVisualTarget(page, point.rect, { ...operatorOptions, color: action.color, label: action.label || action.selector });
+          step.selector = action.selector;
+          step.cursor = { x: Math.round(point.x), y: Math.round(point.y) };
+        } else if (op === "clearAnnotations") {
+          if (!visual) throw new Error("clearAnnotations requires a visual session");
+          await clearVisualAnnotations(page, { keepCursor: action.keepCursor !== false });
+        }
         else if (op === "eval") step.result = await page.evaluate(String(action.js || ""));
         else throw new Error(`unknown action type: ${op}`);
         if (action.settleMs) await page.waitForTimeout(Number(action.settleMs));

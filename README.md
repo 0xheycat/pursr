@@ -34,7 +34,8 @@ Most teams need **five separate tools** to do visual QA: a screenshot CLI, a reg
 
 - **A unified CLI** (`pursr`) for every capture, diff, sweep, and audit.
 - **An agent-grade MCP stdio server** (`pursr-mcp`) built on the official Model Context Protocol SDK, with persistent tabs, direct image responses, rendered-state inspection, actions, diagnostics, screenshots, sweeps, and resources.
-- **A library API** with 23 subpath modules, so you can embed the browser and QA primitives in your own tooling.
+- **Visual Operator** sessions with a rendered cursor, target labels, click markers, visible Chrome windows, and authenticated Chrome attachment over CDP.
+- **A library API** with 24 subpath modules, so you can embed the browser and QA primitives in your own tooling.
 - **A plugin system** for custom viewports, sweep ops, and capture hooks.
 - **PDF reports + AI diff summaries** built in - render a sweep to a styled PDF or ask a vision LLM to describe the regression in plain language.
 - **Zero browser bundled** - drives your system Chrome via Playwright. No 200 MB Chromium download.
@@ -80,6 +81,7 @@ pursr sweep ./plan.json   # see plans/ for an example
 | Layered states | entity / terrain / hud / ui isolation | `--layer entity` |
 | Animation freeze | pause CSS/JS animations for stable frames | `--no-animation` |
 | Cursor overlay | pointer / grab / grabbing / crosshair | `--cursor crosshair` |
+| Visual Operator | rendered cursor, target labels, click markers, headed and CDP sessions | MCP session tools |
 | Grid overlay | spacing guides, custom color + tile size | `--grid --grid-tile 64` |
 | Camera control | zoom + pan via mouse wheel/drag | `--zoom 1.5 --panX 200` |
 | Frame timeline | N captures at intervalMs for animations | `pursr frames <url> 8 200` |
@@ -188,10 +190,10 @@ npx pursr-mcp --verbose
 
 | Tool | Description |
 | --- | --- |
-| `pursr_session_open` | Open a persistent browser tab for iterative agent work |
+| `pursr_session_open` | Open a headless, visible, or CDP browser session with optional Visual Operator |
 | `pursr_sessions` | List active browser sessions |
 | `pursr_snapshot` | Visible rendered nodes, geometry, semantics, and computed styles |
-| `pursr_act` | Click, hover, fill, type, scroll, navigate, reload, and more |
+| `pursr_act` | Interact plus move cursor, annotate targets, and clear visual feedback |
 | `pursr_screenshot` | Return the current PNG directly to the vision model |
 | `pursr_inspect` | Inspect exact geometry, computed styles, and stacking ancestors |
 | `pursr_diagnostics` | Read console, page errors, failed requests, and HTTP failures |
@@ -229,6 +231,52 @@ Example action arguments:
   ]
 }
 ```
+
+### Visual Operator
+
+Set `visual: true` to render the agent cursor and interaction feedback into screenshots. `mode: "visible"` enables it automatically and opens a Chrome window that a developer can watch.
+
+```json
+{
+  "url": "http://localhost:3000",
+  "sessionId": "visual-review",
+  "mode": "visible",
+  "operatorColor": "#ff2ea6",
+  "slowMo": 80
+}
+```
+
+Visual actions use the regular `pursr_act` tool:
+
+```json
+{
+  "sessionId": "visual-review",
+  "actions": [
+    { "type": "move", "x": 640, "y": 360, "durationMs": 300 },
+    { "type": "annotate", "selector": "role=button|Publish", "label": "Primary CTA" },
+    { "type": "click", "selector": "role=button|Publish" },
+    { "type": "clearAnnotations", "keepCursor": true }
+  ]
+}
+```
+
+To use an existing authenticated Chrome profile, start Chrome with a dedicated remote-debugging profile and attach using CDP. Do not expose the debugging port beyond localhost.
+
+```bash
+chrome --remote-debugging-port=9222 --user-data-dir=/tmp/pursr-chrome
+```
+
+```json
+{
+  "url": "https://app.example.com",
+  "sessionId": "signed-in-review",
+  "mode": "cdp",
+  "cdpUrl": "http://127.0.0.1:9222",
+  "visual": true
+}
+```
+
+Pursr opens a new tab in Chrome's default context, preserving that profile's cookies and login state. Closing the Pursr session disconnects without terminating the owner browser.
 
 ### Exposed Resources
 
@@ -364,7 +412,8 @@ import {
   saveBaseline, diffKey,
   startHarCapture, stopHarCapture, writeHar,
   loadAuthState,
-  PursrMCPServer, loadMcpConfig,
+  PursrMCPServer, loadMcpConfig, BrowserSessionManager,
+  installVisualOperator, moveVisualCursor, highlightVisualTarget,
   validateSweepPlan,
   listResources, readResource,
   listViewports, resolveViewport, VIEWPORTS,
@@ -390,6 +439,8 @@ import { startHarCapture, stopHarCapture } from "pursr/har";
 import { saveAuthState, loadAuthState } from "pursr/auth";
 import { listResources, readResource } from "pursr/mcp-resources";
 import { PursrMCPServer } from "pursr/mcp";
+import { BrowserSessionManager } from "pursr/session";
+import { moveVisualCursor, highlightVisualTarget } from "pursr/visual-operator";
 ```
 
 ## Plugins
@@ -417,7 +468,9 @@ Plugins are auto-loaded from `plugins/` (built-in) or via `--plugin <path>`.
 ```
 src/
   index.js          - public library entry
-  mcp.js            - MCP stdio server (JSON-RPC 2.0)
+  mcp.js            - official MCP SDK stdio server
+  session.js        - persistent headless, visible, and CDP sessions
+  visual-operator.js - rendered cursor and interaction feedback
   shoot.js          - runShoot (overlays + camera + frame-stable)
   sweep.js          - runSweep (validated, parallel pool)
   diff.js           - pixelmatch wrapper
