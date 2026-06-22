@@ -16,9 +16,10 @@ import { runEveryViewport } from "../src/every-viewport.js";
 import { runAudit } from "../src/plugin-audit.js";
 import { captureDomSnapshot } from "../src/dom-snapshot.js";
 import { listViewports } from "../src/viewport.js";
-import { parseFlags, asNum, readArg, makeOut, pickOutPath, __PURSR_GET } from "../src/util.js";
+import { asNum, readArg, makeOut, __PURSR_GET } from "../src/util.js";
+import { filePathArg, parseCommandArgs } from "../src/cli-args.js";
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { readFileSync as _readFileSync } from "node:fs";
 const readFile = _readFileSync;
 import { loadPlugins, listPlugins, getFlagHelp } from "../src/plugin.js";
@@ -45,18 +46,23 @@ function die(msg, code = 2) {
 }
 
 const argv = process.argv;
-const [, , cmd, a, b, c, d] = argv;
+const [, , cmd] = argv;
+const { flags: cliFlags, positionals } = parseCommandArgs(argv.slice(3));
+const [a, b, c, d] = positionals;
 const url = __PURSR_GET("PURSR_URL") || a;
-// Top-level --plan / --out parsing for subcommands that need it before dispatch
-function _topOpts() {
-  const o = {};
-  for (let i = 2; i < argv.length; i++) {
-    if (argv[i] === "--plan" && i + 1 < argv.length) o.plan = argv[++i];
-    if (argv[i] === "--out" && i + 1 < argv.length) o.out = argv[++i];
-  }
-  return o;
+const opts = { plan: cliFlags.plan, out: cliFlags.out };
+
+function outputPath(positional, filename) {
+  if (cliFlags.out) return String(cliFlags.out);
+  if (positional) return positional;
+  if (cliFlags["out-dir"]) return join(String(cliFlags["out-dir"]), filename);
+  return makeOut(filename);
 }
-const opts = _topOpts();
+
+function dataArg(value) {
+  if (value && !value.startsWith("@") && existsSync(value)) return readFile(value, "utf8").replace(/\r?\n$/, "");
+  return readArg(value);
+}
 
 // Plugin loading: scan for --plugin <path> and built-in plugins/
 const pluginPaths = [];
@@ -65,6 +71,7 @@ await loadPlugins(pluginPaths);
 
 (async () => {
   try {
+    if (cliFlags.help) { console.log(JSON.stringify({ usage: USAGE }, null, 2)); return; }
     switch (cmd) {
       case undefined: case "help": case "--help": case "-h": { console.log(JSON.stringify({ usage: USAGE }, null, 2)); break; }
       case "version": case "--version": case "-v": {
@@ -72,32 +79,32 @@ await loadPlugins(pluginPaths);
         break;
       }
       case "probe": { if (!url) die("missing url"); const r = await runProbe(url); console.log(JSON.stringify(r, null, 2)); break; }
-      case "shot": { if (!url) die("missing url"); const out = b || makeOut("shot.png"); const r = await runShot(url, out, { fullPage: false }); console.log(JSON.stringify(r, null, 2)); break; }
-      case "full": { if (!url) die("missing url"); const out = b || makeOut("full.png"); const r = await runShot(url, out, { fullPage: true }); console.log(JSON.stringify(r, null, 2)); break; }
-      case "eval": { if (!url) die("missing url"); const js = readArg(b); if (!js) die("eval: missing <js> (or @file)"); const out = c || makeOut("eval.png"); const r = await runEval(url, js, out); console.log(JSON.stringify(r, null, 2)); break; }
-      case "click": { if (!url) die("missing url"); const sel = b; if (!sel) die("click: missing <selector>"); const out = c || makeOut(`click-${(sel||"").replace(/[^a-z0-9]+/gi, "_").slice(0, 32)}.png`); const r = await runClick(url, sel, out); console.log(JSON.stringify(r, null, 2)); break; }
-      case "type": { if (!url) die("missing url"); const sel = b; const text = readArg(c); if (!sel || text === undefined) die("type: missing <selector> or <text> (text can be @file)"); const out = d || makeOut(`type-${(sel||"").replace(/[^a-z0-9]+/gi, "_").slice(0, 32)}.png`); const r = await runType(url, sel, text, out); console.log(JSON.stringify(r, null, 2)); break; }
-      case "wait": { if (!url) die("missing url"); const sel = b; if (!sel) die("wait: missing <selector>"); const t = c !== undefined ? asNum(c, 30000) : 30000; const r = await runWait(url, sel, t); console.log(JSON.stringify(r, null, 2)); break; }
+      case "shot": { if (!url) die("missing url"); const out = outputPath(b, "shot.png"); const r = await runShot(url, out, { ...cliFlags, fullPage: false }); console.log(JSON.stringify(r, null, 2)); break; }
+      case "full": { if (!url) die("missing url"); const out = outputPath(b, "full.png"); const r = await runShot(url, out, { ...cliFlags, fullPage: true }); console.log(JSON.stringify(r, null, 2)); break; }
+      case "eval": { if (!url) die("missing url"); const js = dataArg(b); if (!js) die("eval: missing <js> (or @file)"); const out = outputPath(c, "eval.png"); const r = await runEval(url, js, out, cliFlags); console.log(JSON.stringify(r, null, 2)); break; }
+      case "click": { if (!url) die("missing url"); const sel = b; if (!sel) die("click: missing <selector>"); const out = outputPath(c, `click-${(sel||"").replace(/[^a-z0-9]+/gi, "_").slice(0, 32)}.png`); const r = await runClick(url, sel, out, cliFlags); console.log(JSON.stringify(r, null, 2)); break; }
+      case "type": { if (!url) die("missing url"); const sel = b; const text = dataArg(c); if (!sel || text === undefined) die("type: missing <selector> or <text> (text can be @file)"); const out = outputPath(d, `type-${(sel||"").replace(/[^a-z0-9]+/gi, "_").slice(0, 32)}.png`); const r = await runType(url, sel, text, out, cliFlags); console.log(JSON.stringify(r, null, 2)); break; }
+      case "wait": { if (!url) die("missing url"); const sel = b; if (!sel) die("wait: missing <selector>"); const t = c !== undefined ? asNum(c, 30000) : 30000; const r = await runWait(url, sel, t, cliFlags); console.log(JSON.stringify(r, null, 2)); break; }
       case "diff": {
         if (!url) die("missing url"); const ref = b; if (!ref) die("diff: missing <ref.png>");
-        const out = c || makeOut("diff.png"); const threshold = d !== undefined ? Number(d) : 0.1;
-        const flags = parseFlags(argv.slice(5));
+        const out = outputPath(c, "diff.png"); const threshold = cliFlags.threshold !== undefined ? Number(cliFlags.threshold) : d !== undefined ? Number(d) : 0.1;
+        const flags = { ...cliFlags };
         // --ai / --ai-model / --ai-base-url / --ai-api-key
         const useAi = argv.includes("--ai");
-        const aiModel = (() => { const i = argv.indexOf("--ai-model"); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined; })();
-        const aiBaseUrl = (() => { const i = argv.indexOf("--ai-base-url"); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined; })();
-        const aiApiKey = (() => { const i = argv.indexOf("--ai-api-key"); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined; })();
+        const aiModel = cliFlags["ai-model"];
+        const aiBaseUrl = cliFlags["ai-base-url"];
+        const aiApiKey = cliFlags["ai-api-key"];
         const r = useAi
           ? await runDiffWithAi(url, ref, out, threshold, flags, { model: aiModel, baseUrl: aiBaseUrl, apiKey: aiApiKey })
           : await runDiff(url, ref, out, threshold, flags);
         console.log(JSON.stringify(r, null, 2)); break;
       }
-      case "seq": { if (!url) die("missing url"); const actions = readArg(b); if (!actions) die("seq: missing <actions.json> (or @file)"); const out = c || makeOut("seq.png"); const r = await runSeq(url, actions, out); console.log(JSON.stringify(r, null, 2)); break; }
+      case "seq": { if (!url) die("missing url"); const actions = dataArg(b); if (!actions) die("seq: missing <actions.json> (or @file)"); const out = outputPath(c, "seq.png"); const r = await runSeq(url, actions, out, cliFlags); console.log(JSON.stringify(r, null, 2)); break; }
       case "operator": {
         if (!url) die("operator: missing <url>");
-        const actions = readArg(b); if (!actions) die("operator: missing <actions.json> (or @file)");
-        const flags = parseFlags(argv.slice(5));
-        const out = flags.out || makeOut("operator.png");
+        const actions = dataArg(b); if (!actions) die("operator: missing <actions.json> (or @file)");
+        const flags = { ...cliFlags };
+        const out = outputPath(null, "operator.png");
         const videoValue = flags.video ?? flags["record-video"];
         const recordVideoDir = videoValue
           ? (videoValue === true ? dirname(out) : String(videoValue))
@@ -130,16 +137,16 @@ await loadPlugins(pluginPaths);
       case "viewports": { console.log(JSON.stringify(listViewports(), null, 2)); break; }
       case "shoot": {
         if (!url) die("missing url");
-        const out = (b && !b.startsWith("--")) ? b : pickOutPath(argv.slice(5)) || makeOut("shoot.png");
-        const r = await runShootWithSidecar({ url, out, flags: parseFlags(argv.slice(5)) });
+        const out = outputPath(b, "shoot.png");
+        const r = await runShootWithSidecar({ url, out, flags: { ...cliFlags } });
         console.log(JSON.stringify(r, null, 2));
         break;
       }
       case "layer": {
         if (!url) die("missing url");
         const layerName = b; if (!layerName) die("layer: missing <name>");
-        const out = (c && !c.startsWith("--")) ? c : pickOutPath(argv.slice(6)) || makeOut(`layer-${layerName}.png`);
-        const flags = parseFlags(argv.slice(7)); flags.layer = layerName;
+        const out = outputPath(c, `layer-${layerName}.png`);
+        const flags = { ...cliFlags, layer: layerName };
         const r = await runShootWithSidecar({ url, out, flags });
         console.log(JSON.stringify(r, null, 2));
         break;
@@ -148,39 +155,37 @@ await loadPlugins(pluginPaths);
         if (!url) die("missing url");
         const count = asNum(b, 8);
         const stepMs = asNum(c, 250);
-        const outDir = (d && !d.startsWith("--")) ? d : makeOut(`frames-${count}x${stepMs}ms`);
-        const r = await runFrames({ url, count, intervalMs: stepMs, outDir, flags: parseFlags(argv.slice(7)) });
+        const outDir = cliFlags["out-dir"] || cliFlags.out || d || makeOut(`frames-${count}x${stepMs}ms`);
+        const r = await runFrames({ url, count, intervalMs: stepMs, outDir, flags: { ...cliFlags } });
         console.log(JSON.stringify(r, null, 2));
         break;
       }
       case "hover": {
         if (!url) die("missing url");
         const sel = b; if (!sel) die("hover: missing <selector>");
-        const out = (c && !c.startsWith("--")) ? c : pickOutPath(argv.slice(6)) || makeOut(`hover-${(sel||"").replace(/[^a-z0-9]+/gi, "_").slice(0, 32)}.png`);
-        const r = await runHover({ url, selector: sel, out, flags: parseFlags(argv.slice(6)) });
+        const out = outputPath(c, `hover-${(sel||"").replace(/[^a-z0-9]+/gi, "_").slice(0, 32)}.png`);
+        const r = await runHover({ url, selector: sel, out, flags: { ...cliFlags } });
         console.log(JSON.stringify(r, null, 2));
         break;
       }
       case "sweep": {
-        const planPath = readArg(a);
-        if (!planPath) die("sweep: missing <plan.json> (or @file)");
-        const outDirArg = (b && !b.startsWith("--")) ? b : undefined;
+        const planPath = filePathArg(a);
+        if (!planPath) die("sweep: missing <plan.json>");
+        if (/^https?:\/\//i.test(planPath)) die("sweep: expected a local JSON plan path, not a URL");
+        const outDirArg = cliFlags["out-dir"] || cliFlags.out || b;
         const r = await runSweep(planPath, outDirArg);
         console.log(JSON.stringify(r, null, 2));
         break;
       }
       case "report": {
         // pursr report --sweep <sweep.json> [--out report.pdf] [--title "..."]
-        const sweepIdx = argv.indexOf("--sweep");
-        const sweepPath = sweepIdx >= 0 && sweepIdx + 1 < argv.length ? argv[sweepIdx + 1] : a;
+        const sweepPath = cliFlags.sweep || a;
         if (!sweepPath) die("report: missing --sweep <sweep.json>");
         if (!existsSync(sweepPath)) die("report: sweep not found: " + sweepPath);
-        const outIdx = argv.indexOf("--out");
-        const outPath = outIdx >= 0 && outIdx + 1 < argv.length ? argv[outIdx + 1] : (opts.out || makeOut("report.pdf").replace(/pursr-[^-]+-shot.png$/, "report.pdf"));
+        const outPath = cliFlags.out || makeOut("report.pdf").replace(/pursr-[^-]+-shot.png$/, "report.pdf");
         if (outPath && outPath !== "-") mkdirSync(dirname(outPath), { recursive: true });
-        const titleIdx = argv.indexOf("--title");
-        const title = titleIdx >= 0 && titleIdx + 1 < argv.length ? argv[titleIdx + 1] : undefined;
-        const noEmbed = argv.includes("--no-embed");
+        const title = cliFlags.title;
+        const noEmbed = !!cliFlags["no-embed"];
         const summary = JSON.parse(readFile(sweepPath, "utf8"));
         const { renderSweepPdf } = await import("../src/report.js");
         const buf = await renderSweepPdf(summary, { out: outPath === "-" ? undefined : outPath, title, embedImages: !noEmbed });
@@ -189,30 +194,31 @@ await loadPlugins(pluginPaths);
       }
       case "every-viewport": {
         if (!url) die("missing url");
-        const outDir = (b && !b.startsWith("--")) ? b : undefined;
-        const viewports = c?.startsWith("--") ? undefined : c?.split(",");
+        const outDir = cliFlags["out-dir"] || cliFlags.out || b;
+        const viewports = c?.split(",");
         const r = await runEveryViewport({ url, outDir, viewports });
         console.log(JSON.stringify(r, null, 2));
         break;
       }
       case "audit": {
         if (!url) die("missing url");
-        const tags = (b && !b.startsWith("--")) ? b : undefined;
-        const outDir = (c && !c.startsWith("--")) ? c : undefined;
+        const tags = cliFlags.tags || b;
+        const outDir = cliFlags["out-dir"] || cliFlags.out || c;
         const r = await runAudit({ url, tags: tags?.split(",").map(t => t.trim()), outDir });
         console.log(JSON.stringify(r, null, 2));
         break;
       }
       case "dom-snapshot": case "dom": {
         if (!url) die("missing url");
-        const out = (b && !b.startsWith("--")) ? b : undefined;
+        const out = cliFlags.out || b;
         const r = await captureDomSnapshot({ url, out });
         console.log(JSON.stringify({ url: r.url, title: r.title, elements: r.selectorMap?.length, domSize: r.dom?.length, out: r.url?.replace(/[^/]+$/, "") + "dom.json" }, null, 2));
         break;
       }
       case "validate": {
-        const planPath = readArg(a);
-        if (!planPath) die("validate: missing <plan.json> (or @file)");
+        const planPath = filePathArg(a);
+        if (!planPath) die("validate: missing <plan.json>");
+        if (/^https?:\/\//i.test(planPath)) die("validate: expected a local JSON plan path, not a URL");
         let plan;
         try { plan = JSON.parse(readFile(planPath, "utf8")); }
         catch (e) { die("validate: " + e.message); }
@@ -237,7 +243,7 @@ await loadPlugins(pluginPaths);
         } else if (sub === "save") {
           if (!b || !c || !d) die("baseline save: <project> <png> <step> [--id <id>] [--url <u>] [--meta-json <file>]");
           const project = b, png = c, step = d;
-          const flags = parseFlags(argv.slice(7));
+          const flags = { ...cliFlags };
           let meta = null;
           if (flags["meta-json"]) meta = JSON.parse(readFile(flags["meta-json"], "utf8"));
           else if (flags.url) meta = { url: flags.url };
@@ -253,14 +259,14 @@ await loadPlugins(pluginPaths);
         } else if (sub === "approve") {
           if (!b || !c || !d) die("baseline approve: <project> <png> <step> [--id <id>] [--url <u>]");
           const project = b, png = c, step = d;
-          const flags = parseFlags(argv.slice(7));
+          const flags = { ...cliFlags };
           const id = flags.id || diffKey({ url: flags.url || "", flags: {} });
           const result = approveBaseline({ project, id, step, fromPng: png });
           console.log(JSON.stringify({ approved: true, ...result }, null, 2));
         } else if (sub === "show") {
           if (!b || !c) die("baseline show: <project> <step> [--id <id>] [--url <u>]");
           const project = b, step = c;
-          const flags = parseFlags(argv.slice(5));
+          const flags = { ...cliFlags };
           const id = flags.id || diffKey({ url: flags.url || "", flags: {} });
           const r = loadBaseline({ project, id, step });
           console.log(JSON.stringify(r, null, 2));
@@ -282,14 +288,14 @@ await loadPlugins(pluginPaths);
                 console.log(JSON.stringify(listAuthStates(project), null, 2));
               } else if (sub === "save") {
                 if (!b || !c) die("auth save: <project> <name> --from <state.json>");
-                const fromFile = argv[argv.indexOf("--from") + 1];
+                const fromFile = cliFlags.from;
                 if (!fromFile) die("auth save: missing --from <state.json>");
                 const state = JSON.parse(readFile(fromFile, "utf8"));
                 const r = saveAuthState({ project: b, name: c, state });
                 console.log(JSON.stringify({ saved: true, ...r }, null, 2));
               } else if (sub === "load") {
                 if (!b || !c) die("auth load: <project> <name> --out <state.json>");
-                const outFile = argv[argv.indexOf("--out") + 1];
+                const outFile = cliFlags.out;
                 if (!outFile) die("auth load: missing --out <state.json>");
                 const state = loadAuthState({ project: b, name: c });
                 if (!state) { console.error("not found"); process.exit(2); }
@@ -312,9 +318,9 @@ await loadPlugins(pluginPaths);
                 die("watch: missing <url> (or use --plan <plan.json>)");
               }
               const { startWatch } = await import("../src/watch.js");
-              const out = (b && !b.startsWith("--")) ? b : (opts.out || makeOut("watch.png"));
+              const out = opts.out || b || makeOut("watch.png");
               if (out && out !== "--plan") mkdirSync(dirname(out), { recursive: true });
-              const flags = parseFlags(argv.slice(3));
+              const flags = { ...cliFlags };
               const onGlobs = [];
               for (let i = 0; i < argv.length; i++) {
                 if (argv[i] === "--on" && i + 1 < argv.length) onGlobs.push(argv[++i]);
@@ -341,9 +347,9 @@ await loadPlugins(pluginPaths);
               // pursr snap <url> <selector> [--out <dir>] [--name <slug>] [--max N] [--baseline <project>]
               if (!url) die("snap: missing <url>");
               const sel = b; if (!sel) die("snap: missing <selector>");
-              const flags = parseFlags(argv.slice(4));
+              const flags = { ...cliFlags };
               const { runSnap, approveSnapsAsBaselines } = await import("../src/snap.js");
-              const outDir = flags.out || makeOut("snaps").replace(/pursr-[^-]+-snap\.png$/, "snaps");
+              const outDir = flags["out-dir"] || flags.out || makeOut("snaps").replace(/pursr-[^-]+-snap\.png$/, "snaps");
               const snap = await runSnap({ url, selector: sel, outDir, name: flags.name, max: flags.max, flags });
               console.log(JSON.stringify({
                 url: snap.url,
@@ -363,7 +369,7 @@ await loadPlugins(pluginPaths);
             case "check": {
               // pursr check <url> [--preset <name>] [--update] [--json] [--threshold 0.1] [--out <diff.png>]
               if (!url) die("check: missing <url>");
-              const flags = parseFlags(argv.slice(4));
+              const flags = { ...cliFlags };
               const update = !!flags.update;
               const threshold = flags.threshold !== undefined ? Number(flags.threshold) : 0.1;
               const { runCheck } = await import("../src/check.js");

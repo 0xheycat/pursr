@@ -5,6 +5,8 @@ import { resolveViewport } from "./viewport.js";
 import { gotoOrThrow, settle, CLICK_TIMEOUT_MS } from "./overlays.js";
 import { resolveLocator } from "./selector.js";
 import { asNum, asBool, nowIso, writeSidecar, requireArg } from "./util.js";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 export async function runHover({ url, selector, out, flags = {} }) {
   requireArg("url", url, "string");
@@ -18,7 +20,10 @@ export async function runHover({ url, selector, out, flags = {} }) {
     await loc.first().waitFor({ state: "visible", timeout: CLICK_TIMEOUT_MS });
     await loc.first().hover({ timeout: CLICK_TIMEOUT_MS });
     await page.waitForTimeout(asNum(flags["hover-ms"], 250));
-    if (out) await page.screenshot({ path: out, fullPage: asBool(flags.full, false) });
+    if (out) {
+      mkdirSync(dirname(out), { recursive: true });
+      await page.screenshot({ path: out, fullPage: asBool(flags.full, false) });
+    }
     const meta = { ...r, url, out, selector, viewport, ts: nowIso() };
     if (out) await writeSidecar(meta);
     return meta;

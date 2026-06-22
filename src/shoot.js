@@ -11,9 +11,12 @@ import { asNum, asBool, nowIso, writeSidecar, requireArg } from "./util.js";
 import { runBeforeShoot, runAfterShoot } from "./plugin.js";
 import { startHarCapture, stopHarCapture, writeHar } from "./har.js";
 import { loadAuthState } from "./auth.js";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 export async function runShoot({ url, out, flags = {}, prepare, browser: extBrowser }) {
   requireArg("url", url, "string");
+  if (out) mkdirSync(dirname(out), { recursive: true });
   const viewport = resolveViewport(flags);
   const ownBrowser = !extBrowser;
   const browser = extBrowser || await launch();

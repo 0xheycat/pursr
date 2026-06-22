@@ -156,6 +156,15 @@ pursr validate ./plan.json
 
 ### Subcommands
 
+Flags are order-independent. Both commands below are valid, and explicit output paths override Pursr's default output directory:
+
+```bash
+pursr shot --preset desktop-1280 https://example.com --out ./captures/home.png
+pursr full https://example.com --preset desktop-1280 --out-dir ./captures
+```
+
+`--out` is a complete file path. `--out-dir` is a directory where Pursr writes the command's standard filename.
+
 | Subcommand | Purpose |
 | --- | --- |
 | `probe` | Health check (HTTP status, page title) |
@@ -176,6 +185,10 @@ pursr validate ./plan.json
 | `baseline` | save / list / approve / show visual baselines |
 | `auth` | save / load / list / delete Playwright storageState |
 | `validate` | Validate a sweep plan JSON without running it |
+
+### Agent Skill
+
+The npm package includes [`SKILL.md`](./SKILL.md), a compact operating guide for coding agents. Point an agent at `node_modules/pursr/SKILL.md`, or copy it into the skill directory used by your agent host. It explains when to use CLI versus MCP, correct argument order, action plans, visual verification, and safety boundaries.
 
 ## MCP Server
 

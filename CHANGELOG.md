@@ -1,3 +1,30 @@
+## 0.10.1
+
+**CLI argument parser and output-path reliability patch.**
+
+### Fixed
+
+- Flags can now appear before or after positional arguments without being mistaken for URLs, selectors, JavaScript, reference images, or plan paths.
+- `shot` and `full` no longer pass flag names to Playwright as extensionless screenshot paths.
+- `eval` no longer evaluates `--preset` as JavaScript when flags precede the URL.
+- `click`, `type`, `hover`, `seq`, and `diff` preserve their positional argument order when mixed with flags.
+- `--out` is honored as an exact file path and `--out-dir` writes the standard command filename inside the requested directory.
+- Capture commands create missing parent directories before writing screenshots.
+- `seq` and `operator` accept either inline JSON, `@file.json`, or a plain JSON file path.
+- `report --help` returns usage instead of treating `--help` as a sweep summary path.
+- `sweep` and `validate` now explain that they require a local JSON plan when given a URL.
+- Simple commands now apply viewport flags such as `--preset`, `--width`, `--height`, and `--dpr` instead of silently ignoring them.
+
+### Agent Support
+
+- Added a packaged root `SKILL.md` covering CLI versus MCP selection, argument contracts, Visual Operator actions, the MCP inspection loop, safety, and common mistakes.
+
+### Tests
+
+- Added subprocess-level CLI regression coverage for `shot`, `full`, `shoot`, `eval`, `click`, `type`, `hover`, `seq`, `diff`, `sweep`, and `report --help`.
+- Added parser unit coverage for mixed flag/positional ordering and boolean flags.
+- Verified that `shoot` captures fresh content instead of reusing the previous screenshot.
+
 ## 0.10.0
 
 **Recordable Visual Operator for CLI and agents.**

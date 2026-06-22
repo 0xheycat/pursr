@@ -1,50 +1,56 @@
 // click, type, wait, seq — interaction primitives.
 
 import { launch, newPage } from "./runway.js";
-import { DEFAULT_VIEWPORT } from "./viewport.js";
+import { resolveViewport } from "./viewport.js";
 import { gotoOrThrow, settle, CLICK_TIMEOUT_MS, WAIT_DEFAULT_TIMEOUT_MS } from "./overlays.js";
 import { resolveLocator } from "./selector.js";
 import { requireArg } from "./util.js";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
-export async function runClick(url, selector, out) {
+function ensureScreenshotDir(out) {
+  if (out) mkdirSync(dirname(out), { recursive: true });
+}
+
+export async function runClick(url, selector, out, flags = {}) {
   requireArg("url", url, "string");
   requireArg("selector", selector, "string");
   const browser = await launch();
   try {
-    const page = await newPage(browser, DEFAULT_VIEWPORT);
+    const page = await newPage(browser, resolveViewport(flags));
     const r = await gotoOrThrow(page, url); await settle(page);
     const loc = await resolveLocator(page, selector);
     await loc.first().waitFor({ state: "visible", timeout: CLICK_TIMEOUT_MS });
     await loc.first().click({ timeout: CLICK_TIMEOUT_MS });
     await settle(page);
-    if (out) await page.screenshot({ path: out, fullPage: false });
+    if (out) { ensureScreenshotDir(out); await page.screenshot({ path: out, fullPage: false }); }
     return { ...r, url, out, selector, clicked: true };
   } finally { try { await browser.close(); } catch {} }
 }
 
-export async function runType(url, selector, text, out) {
+export async function runType(url, selector, text, out, flags = {}) {
   requireArg("url", url, "string");
   requireArg("selector", selector, "string");
   const browser = await launch();
   try {
-    const page = await newPage(browser, DEFAULT_VIEWPORT);
+    const page = await newPage(browser, resolveViewport(flags));
     const r = await gotoOrThrow(page, url); await settle(page);
     const loc = await resolveLocator(page, selector);
     await loc.first().waitFor({ state: "visible", timeout: CLICK_TIMEOUT_MS });
     await loc.first().click({ timeout: CLICK_TIMEOUT_MS });
     await page.keyboard.type(String(text ?? ""), { delay: 10 });
     await settle(page);
-    if (out) await page.screenshot({ path: out, fullPage: false });
+    if (out) { ensureScreenshotDir(out); await page.screenshot({ path: out, fullPage: false }); }
     return { ...r, url, out, selector, text, typed: true };
   } finally { try { await browser.close(); } catch {} }
 }
 
-export async function runWait(url, selector, timeoutMs) {
+export async function runWait(url, selector, timeoutMs, flags = {}) {
   requireArg("url", url, "string");
   requireArg("selector", selector, "string");
   const browser = await launch();
   try {
-    const page = await newPage(browser, DEFAULT_VIEWPORT);
+    const page = await newPage(browser, resolveViewport(flags));
     const r = await gotoOrThrow(page, url);
     const loc = await resolveLocator(page, selector);
     const t = timeoutMs || WAIT_DEFAULT_TIMEOUT_MS;
@@ -57,7 +63,7 @@ export async function runWait(url, selector, timeoutMs) {
   } finally { try { await browser.close(); } catch {} }
 }
 
-export async function runSeq(url, actionsJson, out) {
+export async function runSeq(url, actionsJson, out, flags = {}) {
   requireArg("url", url, "string");
   let actions;
   try { actions = JSON.parse(actionsJson); }
@@ -66,7 +72,7 @@ export async function runSeq(url, actionsJson, out) {
   if (!actions.length) throw new Error("actions array is empty");
   const browser = await launch();
   try {
-    const page = await newPage(browser, DEFAULT_VIEWPORT);
+    const page = await newPage(browser, resolveViewport(flags));
     const r = await gotoOrThrow(page, url); await settle(page);
     const trace = [];
     let failed = false;
@@ -132,7 +138,7 @@ export async function runSeq(url, actionsJson, out) {
       trace.push(step);
       if (failed) break;
     }
-    if (out) await page.screenshot({ path: out, fullPage: false });
+    if (out) { ensureScreenshotDir(out); await page.screenshot({ path: out, fullPage: false }); }
     return { ...r, url, out, steps: trace, failed };
   } finally { try { await browser.close(); } catch {} }
 }

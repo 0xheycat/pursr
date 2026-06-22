@@ -1,6 +1,6 @@
 // Pixelmatch diff against a reference PNG.
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { launch, newPage } from "./runway.js";
 import { resolveViewport } from "./viewport.js";
@@ -25,6 +25,7 @@ export async function runDiff(url, refPath, out, threshold, flags = {}, browser)
   requireArg("refPath", refPath, "string");
   const t = threshold !== undefined ? Number(threshold) : DIFF_DEFAULT_THRESHOLD;
   if (!existsSync(refPath)) return { url, refPath, error: "reference file not found" };
+  if (out) mkdirSync(dirname(out), { recursive: true });
   const PNG = await loadPngjs();
   const pixelmatch = await loadPixelmatch();
   const ownBrowser = !browser;
