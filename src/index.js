@@ -45,6 +45,7 @@ import { runCheck } from "./check.js";
 import { renderSweepPdf } from "./report.js";
 import { aiDiffSummary, aiDiffSidecar } from "./ai-diff.js";
 import { BrowserSessionManager } from "./session.js";
+import { runOperator } from "./operator.js";
 import {
   installVisualOperator, moveVisualCursor, highlightVisualTarget,
   markVisualClick, clearVisualAnnotations, visualPointForLocator,
@@ -92,6 +93,7 @@ export {
   renderSweepPdf,
   aiDiffSummary, aiDiffSidecar,
   BrowserSessionManager,
+  runOperator,
   installVisualOperator, moveVisualCursor, highlightVisualTarget,
   markVisualClick, clearVisualAnnotations, visualPointForLocator,
   VERSION,
@@ -116,6 +118,7 @@ export default {
   // v6: PDF report, AI diff summary
   runDiffWithAi, renderSweepPdf, aiDiffSummary, aiDiffSidecar,
   BrowserSessionManager,
+  runOperator,
   installVisualOperator, moveVisualCursor, highlightVisualTarget,
   markVisualClick, clearVisualAnnotations, visualPointForLocator,
   VERSION,

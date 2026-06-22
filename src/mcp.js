@@ -161,6 +161,7 @@ class PursrMCPServer {
             cdpUrl: { type: "string", description: "Chrome DevTools endpoint for mode=cdp, e.g. http://127.0.0.1:9222" },
             slowMo: { type: "number", description: "Delay Playwright operations in milliseconds" },
             operatorColor: { type: "string", description: "Visual Operator accent color" },
+            recordVideoDir: { type: "string", description: "Directory for a WebM recording (headless or visible mode only)" },
             timeoutMs: { type: "number", description: "Navigation/CDP connection timeout" },
             storageState: { description: "Playwright storageState object or file path" },
           },
@@ -187,7 +188,7 @@ class PursrMCPServer {
       },
       {
         name: "pursr_act",
-        description: "Perform ordered actions in a persistent session. Supports click, hover, fill, type, check, select, press, scroll, wait, sleep, navigate, reload, eval, move, annotate, and clearAnnotations.",
+        description: "Perform ordered actions in a persistent session. Supports selector or coordinate click/doubleClick, drag, hover, fill, type, check, select, press, keyDown, keyUp, scroll, wait, sleep, navigate, reload, eval, move, annotate, and clearAnnotations.",
         inputSchema: {
           type: "object",
           properties: {
@@ -416,6 +417,7 @@ class PursrMCPServer {
       preset: args.preset, width: args.width, height: args.height, dpr: args.dpr,
       mode: args.mode, visible: args.visible, visual: args.visual, cdpUrl: args.cdpUrl,
       slowMo: args.slowMo, operatorColor: args.operatorColor, timeoutMs: args.timeoutMs,
+      recordVideoDir: args.recordVideoDir,
     };
     const result = await this.sessions.open({ sessionId: args.sessionId, url: args.url, flags, storageState: args.storageState });
     return this._text(result);

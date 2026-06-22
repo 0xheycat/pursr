@@ -649,4 +649,5 @@ test("MCP exposes persistent browser-agent tools", async () => {
   assert.deepEqual(openTool.inputSchema.properties.mode.enum, ["headless", "visible", "cdp"]);
   assert.ok(openTool.inputSchema.properties.visual);
   assert.ok(openTool.inputSchema.properties.cdpUrl);
+  assert.ok(openTool.inputSchema.properties.recordVideoDir);
 });

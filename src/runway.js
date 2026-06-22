@@ -70,6 +70,10 @@ export async function newPage(browser, viewport, opts = {}) {
       hasTouch: !!(viewport.name && viewport.name.startsWith("mobile")),
       isMobile: !!(viewport.name && viewport.name.startsWith("mobile")),
       storageState: opts.storageState || undefined,
+      recordVideo: opts.recordVideoDir ? {
+        dir: opts.recordVideoDir,
+        size: { width: viewport.width, height: viewport.height },
+      } : undefined,
     });
   const page = await ctx.newPage();
   if (opts.context) await page.setViewportSize({ width: viewport.width, height: viewport.height }).catch(() => {});

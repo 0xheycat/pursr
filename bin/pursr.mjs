@@ -3,6 +3,7 @@
 
 import { VERSION } from "../src/index.js";
 import { runClick, runType, runWait, runSeq } from "../src/interact.js";
+import { runOperator } from "../src/operator.js";
 import { runEval } from "../src/eval.js";
 import { runProbe } from "../src/probe.js";
 import { runShot } from "../src/shot.js";
@@ -25,6 +26,7 @@ import { loadPlugins, listPlugins, getFlagHelp } from "../src/plugin.js";
 const USAGE = `usage:
   v1: pursr {probe|shot|full|eval|click|type|wait|diff|seq} <url> [...]
   v2: pursr {viewports|shoot|layer|frames|hover|sweep} <...>
+  operator: pursr operator <url> <actions.json|@file> [--visible] [--start-delay 3000] [--video <dir>] [--out <final.png>]
   flags: --preset <name> --width N --height N --dpr N
          --zoom 1.5 --panX 200 --panY -100
          --cursor pointer|grab|grabbing|crosshair|none
@@ -91,6 +93,40 @@ await loadPlugins(pluginPaths);
         console.log(JSON.stringify(r, null, 2)); break;
       }
       case "seq": { if (!url) die("missing url"); const actions = readArg(b); if (!actions) die("seq: missing <actions.json> (or @file)"); const out = c || makeOut("seq.png"); const r = await runSeq(url, actions, out); console.log(JSON.stringify(r, null, 2)); break; }
+      case "operator": {
+        if (!url) die("operator: missing <url>");
+        const actions = readArg(b); if (!actions) die("operator: missing <actions.json> (or @file)");
+        const flags = parseFlags(argv.slice(5));
+        const out = flags.out || makeOut("operator.png");
+        const videoValue = flags.video ?? flags["record-video"];
+        const recordVideoDir = videoValue
+          ? (videoValue === true ? dirname(out) : String(videoValue))
+          : null;
+        const r = await runOperator({
+          url,
+          actions,
+          out,
+          outputDir: dirname(out),
+          sessionId: flags.session || undefined,
+          flags: {
+            mode: flags.mode || (flags.cdp ? "cdp" : flags.visible ? "visible" : "headless"),
+            visual: !flags["no-visual"],
+            cdpUrl: flags.cdp || flags["cdp-url"],
+            slowMo: asNum(flags["slow-mo"] ?? flags.slowMo, 0),
+            startDelayMs: asNum(flags["start-delay"] ?? flags.startDelayMs, 0),
+            operatorColor: flags["operator-color"] || flags.operatorColor,
+            recordVideoDir,
+            width: flags.width,
+            height: flags.height,
+            dpr: flags.dpr,
+            preset: flags.preset,
+            full: !!flags.full,
+          },
+        });
+        console.log(JSON.stringify(r, null, 2));
+        if (!r.ok) process.exitCode = 1;
+        break;
+      }
       case "viewports": { console.log(JSON.stringify(listViewports(), null, 2)); break; }
       case "shoot": {
         if (!url) die("missing url");

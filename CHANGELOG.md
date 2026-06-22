@@ -1,3 +1,30 @@
+## 0.10.0
+
+**Recordable Visual Operator for CLI and agents.**
+
+### Added
+
+- `pursr operator` for running reusable JSON action plans without an MCP host.
+- Native WebM recording in headless and visible browser sessions.
+- Configurable `--start-delay` for games and applications that need extra startup time before the scripted actions begin.
+- Final screenshot, action trace, diagnostics, and video path in operator results.
+- Coordinate click and double-click actions for canvas and game interfaces.
+- Drag actions using coordinates or selectors.
+- `keyDown` and `keyUp` actions for held controls in games and canvas applications.
+- `recordVideoDir` support in MCP session creation; the video path is returned when the session closes.
+- Public `pursr/operator` module with the reusable `runOperator` API.
+
+### Compatibility
+
+- CLI and MCP share the same `BrowserSessionManager` and action format.
+- CDP remains the authenticated-profile option; recording is rejected explicitly in CDP mode because the attached Chrome process owns its context.
+- Existing commands and MCP tool names remain unchanged.
+
+### Tests
+
+- Added a real WebM recording test that verifies the EBML header and non-empty video payload.
+- Added selector click, coordinate double-click, and coordinate drag coverage.
+
 ## 0.9.0
 
 **Visual Operator for observable agent browser work.**

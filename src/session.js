@@ -71,6 +71,9 @@ export class BrowserSessionManager {
     const mode = flags.mode || (flags.cdpUrl ? "cdp" : flags.visible ? "visible" : "headless");
     if (!new Set(["headless", "visible", "cdp"]).has(mode)) throw new Error("mode must be headless, visible, or cdp");
     const visual = flags.visual === true || mode === "visible";
+    const recordVideoDir = flags.recordVideoDir || null;
+    if (recordVideoDir && mode === "cdp") throw new Error("video recording is not available in CDP mode; use visible or headless mode");
+    if (recordVideoDir) mkdirSync(recordVideoDir, { recursive: true });
     const operatorOptions = { color: flags.operatorColor || "#ff2ea6" };
     const browser = mode === "cdp"
       ? await this.connectBrowser(flags.cdpUrl, { timeoutMs: flags.timeoutMs })
@@ -79,14 +82,18 @@ export class BrowserSessionManager {
       const viewport = resolveViewport(flags);
       const context = mode === "cdp" ? browser.contexts()[0] : null;
       if (mode === "cdp" && !context) throw new Error("CDP browser has no default context");
-      const page = await newPage(browser, viewport, { storageState, context });
+      const page = await newPage(browser, viewport, { storageState, context, recordVideoDir });
       const diagnostics = { console: [], errors: [], requests: [], responses: [] };
       attachDiagnostics(page, diagnostics);
       if (visual) page.on("domcontentloaded", () => installVisualOperator(page, operatorOptions).catch(() => {}));
       const nav = await gotoOrThrow(page, url, { timeoutMs: flags.timeoutMs });
       await settle(page);
       if (visual) await installVisualOperator(page, operatorOptions);
-      const session = { id, browser, page, context: page._pursrContext, viewport, mode, visual, operatorOptions, diagnostics, createdAt: new Date().toISOString() };
+      const session = {
+        id, browser, page, context: page._pursrContext, viewport, mode, visual,
+        operatorOptions, diagnostics, video: page.video?.() || null,
+        createdAt: new Date().toISOString(),
+      };
       this.sessions.set(id, session);
       return { sessionId: id, url: page.url(), title: await page.title(), viewport, mode, visual, status: nav.status, createdAt: session.createdAt };
     } catch (error) {
@@ -158,7 +165,7 @@ export class BrowserSessionManager {
       const op = action.type || action.op;
       const step = { index: i, type: op };
       try {
-        if (["click", "hover", "fill", "type", "check", "select"].includes(op)) {
+        if (["click", "doubleClick", "hover", "fill", "type", "check", "select"].includes(op) && action.selector) {
           const locator = await resolveLocator(page, action.selector);
           await locator.first().waitFor({ state: "visible", timeout: action.timeoutMs || CLICK_TIMEOUT_MS });
           let point = null;
@@ -169,14 +176,42 @@ export class BrowserSessionManager {
             step.cursor = { x: Math.round(point.x), y: Math.round(point.y) };
           }
           if (op === "click") await locator.first().click();
+          else if (op === "doubleClick") await locator.first().dblclick();
           else if (op === "hover") await locator.first().hover();
           else if (op === "fill") await locator.first().fill(String(action.text ?? action.value ?? ""));
           else if (op === "type") await locator.first().pressSequentially(String(action.text ?? ""), { delay: action.delayMs || 10 });
           else if (op === "check") await locator.first().setChecked(action.checked !== false);
           else await locator.first().selectOption(action.value);
-          if (visual && op === "click" && point) await markVisualClick(page, point.x, point.y, { ...operatorOptions, color: action.color });
+          if (visual && ["click", "doubleClick"].includes(op) && point) await markVisualClick(page, point.x, point.y, { ...operatorOptions, color: action.color });
           step.selector = action.selector;
+        } else if (["click", "doubleClick"].includes(op) && Number.isFinite(Number(action.x)) && Number.isFinite(Number(action.y))) {
+          const x = Number(action.x), y = Number(action.y);
+          if (visual) await moveVisualCursor(page, x, y, { ...operatorOptions, durationMs: action.durationMs });
+          await page.mouse[op === "doubleClick" ? "dblclick" : "click"](x, y, { button: action.button || "left" });
+          if (visual) await markVisualClick(page, x, y, { ...operatorOptions, color: action.color });
+          step.cursor = { x: Math.round(x), y: Math.round(y) };
+        } else if (op === "drag") {
+          const start = action.fromSelector
+            ? await visualPointForLocator((await resolveLocator(page, action.fromSelector)).first())
+            : { x: Number(action.fromX), y: Number(action.fromY) };
+          const end = action.toSelector
+            ? await visualPointForLocator((await resolveLocator(page, action.toSelector)).first())
+            : { x: Number(action.toX), y: Number(action.toY) };
+          if (![start.x, start.y, end.x, end.y].every(Number.isFinite)) throw new Error("drag requires from/to coordinates or selectors");
+          if (visual) await moveVisualCursor(page, start.x, start.y, { ...operatorOptions, durationMs: action.durationMs });
+          await page.mouse.move(start.x, start.y);
+          await page.mouse.down({ button: action.button || "left" });
+          const steps = Math.max(1, Math.min(100, Number(action.steps) || 20));
+          await page.mouse.move(end.x, end.y, { steps });
+          await page.mouse.up({ button: action.button || "left" });
+          if (visual) {
+            await moveVisualCursor(page, end.x, end.y, { ...operatorOptions, durationMs: 0 });
+            await markVisualClick(page, end.x, end.y, { ...operatorOptions, color: action.color });
+          }
+          step.cursor = { x: Math.round(end.x), y: Math.round(end.y) };
         } else if (op === "press") await page.keyboard.press(String(action.key));
+        else if (op === "keyDown") await page.keyboard.down(String(action.key));
+        else if (op === "keyUp") await page.keyboard.up(String(action.key));
         else if (op === "scroll") await page.mouse.wheel(Number(action.deltaX) || 0, Number(action.deltaY) || 0);
         else if (op === "wait") await (await resolveLocator(page, action.selector)).first().waitFor({ state: action.state || "visible", timeout: action.timeoutMs || WAIT_DEFAULT_TIMEOUT_MS });
         else if (op === "sleep") await page.waitForTimeout(Math.max(0, Number(action.ms) || 0));
@@ -242,8 +277,16 @@ export class BrowserSessionManager {
     const session = this.sessions.get(id);
     if (!session) return { sessionId: id, closed: false };
     this.sessions.delete(id);
+    let video = null;
+    try {
+      if (session.mode === "cdp") await session.page.close();
+      else await session.context.close();
+    } catch {}
     try { await session.browser.close(); } catch {}
-    return { sessionId: id, closed: true };
+    if (session.video) {
+      try { video = await session.video.path(); } catch {}
+    }
+    return { sessionId: id, closed: true, video };
   }
 
   async closeAll() {

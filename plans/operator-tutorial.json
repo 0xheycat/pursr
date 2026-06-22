@@ -1,0 +1,16 @@
+[
+  {
+    "type": "annotate",
+    "selector": "body",
+    "label": "Visual Operator session",
+    "durationMs": 300
+  },
+  {
+    "type": "sleep",
+    "ms": 700
+  },
+  {
+    "type": "clearAnnotations",
+    "keepCursor": true
+  }
+]

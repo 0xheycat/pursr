@@ -35,7 +35,7 @@ Most teams need **five separate tools** to do visual QA: a screenshot CLI, a reg
 - **A unified CLI** (`pursr`) for every capture, diff, sweep, and audit.
 - **An agent-grade MCP stdio server** (`pursr-mcp`) built on the official Model Context Protocol SDK, with persistent tabs, direct image responses, rendered-state inspection, actions, diagnostics, screenshots, sweeps, and resources.
 - **Visual Operator** sessions with a rendered cursor, target labels, click markers, visible Chrome windows, and authenticated Chrome attachment over CDP.
-- **A library API** with 24 subpath modules, so you can embed the browser and QA primitives in your own tooling.
+- **A library API** with 25 subpath modules, so you can embed the browser and QA primitives in your own tooling.
 - **A plugin system** for custom viewports, sweep ops, and capture hooks.
 - **PDF reports + AI diff summaries** built in - render a sweep to a styled PDF or ask a vision LLM to describe the regression in plain language.
 - **Zero browser bundled** - drives your system Chrome via Playwright. No 200 MB Chromium download.
@@ -81,7 +81,7 @@ pursr sweep ./plan.json   # see plans/ for an example
 | Layered states | entity / terrain / hud / ui isolation | `--layer entity` |
 | Animation freeze | pause CSS/JS animations for stable frames | `--no-animation` |
 | Cursor overlay | pointer / grab / grabbing / crosshair | `--cursor crosshair` |
-| Visual Operator | rendered cursor, target labels, click markers, headed and CDP sessions | MCP session tools |
+| Visual Operator | rendered cursor, target labels, click markers, WebM recording, headed and CDP sessions | `operator` CLI + MCP session tools |
 | Grid overlay | spacing guides, custom color + tile size | `--grid --grid-tile 64` |
 | Camera control | zoom + pan via mouse wheel/drag | `--zoom 1.5 --panX 200` |
 | Frame timeline | N captures at intervalMs for animations | `pursr frames <url> 8 200` |
@@ -162,6 +162,7 @@ pursr validate ./plan.json
 | `shot` / `full` | Viewport / full-page screenshot |
 | `eval` | Execute JS in the page, return result |
 | `click` / `type` / `wait` / `seq` | Interaction primitives |
+| `operator` | Run a visible action plan with cursor feedback, screenshot, trace, diagnostics, and optional WebM video |
 | `diff` | Pixel-level diff vs a reference PNG |
 | `viewports` | List all registered viewport presets |
 | `shoot` | Rich capture (overlays, freeze, camera, plugins) |
@@ -236,6 +237,45 @@ Example action arguments:
 
 Set `visual: true` to render the agent cursor and interaction feedback into screenshots. `mode: "visible"` enables it automatically and opens a Chrome window that a developer can watch.
 
+#### CLI: scripted tutorials and repeatable recordings
+
+Use the CLI when the steps are already known. It needs no MCP host and produces a final screenshot, JSON trace, diagnostics, and an optional WebM recording.
+
+```bash
+pursr operator http://localhost:3000 @plans/operator-tutorial.json \
+  --visible \
+  --start-delay 3000 \
+  --slow-mo 100 \
+  --video ./recordings \
+  --out ./recordings/final.png
+```
+
+The action plan is a JSON array. The same action objects work through `pursr_act` in MCP:
+
+```json
+[
+  { "type": "annotate", "selector": "role=button|Build", "label": "Open build menu" },
+  { "type": "click", "selector": "role=button|Build", "durationMs": 350, "settleMs": 500 },
+  { "type": "click", "x": 640, "y": 420, "durationMs": 250 },
+  { "type": "drag", "fromX": 520, "fromY": 400, "toX": 760, "toY": 520, "steps": 30 },
+  { "type": "keyDown", "key": "Shift" },
+  { "type": "keyUp", "key": "Shift" },
+  { "type": "press", "key": "Escape" },
+  { "type": "sleep", "ms": 800 },
+  { "type": "clearAnnotations", "keepCursor": true }
+]
+```
+
+Chrome records the browser viewport as silent WebM video. Add narration or system audio in your editor, and convert to MP4 when needed:
+
+```bash
+ffmpeg -i recording.webm -c:v libx264 -pix_fmt yuv420p tutorial.mp4
+```
+
+#### MCP: adaptive agent operation
+
+Use MCP when the agent must inspect the current page, decide the next action, verify visual results, or pause for human approval. MCP is not required for CLI recording. Both interfaces use the same session and Visual Operator engine.
+
 ```json
 {
   "url": "http://localhost:3000",
@@ -245,6 +285,8 @@ Set `visual: true` to render the agent cursor and interaction feedback into scre
   "slowMo": 80
 }
 ```
+
+Add `recordVideoDir` to record an MCP session in headless or visible mode. The final video path is returned by `pursr_session_close`. CDP sessions preserve an existing browser profile but cannot record video because Chrome owns that context.
 
 Visual actions use the regular `pursr_act` tool:
 
