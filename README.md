@@ -33,7 +33,7 @@
 Most teams need **five separate tools** to do visual QA: a screenshot CLI, a regression diff runner, an accessibility auditor, a way to share captures with an AI assistant, and a way to **turn all of that into a PDF report** for stakeholders. **pursr is all five** - built as a single Node.js package with:
 
 - **A unified CLI** (`pursr`) for every capture, diff, sweep, and audit.
-- **An agent-grade MCP stdio server** (`pursr-mcp`) with persistent tabs, direct image responses, rendered-state inspection, actions, diagnostics, screenshots, sweeps, and resources.
+- **An agent-grade MCP stdio server** (`pursr-mcp`) built on the official Model Context Protocol SDK, with persistent tabs, direct image responses, rendered-state inspection, actions, diagnostics, screenshots, sweeps, and resources.
 - **A library API** with 23 subpath modules, so you can embed the browser and QA primitives in your own tooling.
 - **A plugin system** for custom viewports, sweep ops, and capture hooks.
 - **PDF reports + AI diff summaries** built in - render a sweep to a styled PDF or ask a vision LLM to describe the regression in plain language.
@@ -96,7 +96,7 @@ pursr sweep ./plan.json   # see plans/ for an example
 | HAR capture | HAR 1.2 spec, written next to your shot | `--har ./req.har.json` |
 | Auth state | Playwright storageState, reuse logged-in sessions | `--auth-state admin` |
 | Plugins | custom viewports, sweep ops, before/after hooks | `pursr-plugin-*` |
-| MCP server | 16 tools + resources/list & resources/read for Claude/Cursor | `npx pursr-mcp` |
+| MCP server | Official MCP SDK transport, 16 tools, and resources for Claude/Cursor/Codex | `npx pursr-mcp` |
 | PDF report | render sweep.json to a styled, embedded-PNG A4 PDF | `pursr report --sweep ./sweep.json` |
 | AI diff summary | vision LLM describes the diff in plain language | `pursr diff ... --ai` |
 

@@ -1,6 +1,6 @@
 {
   "name": "pursr",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": false,
   "description": "pursr — Visual QA, audit, and MCP for the browser. One CLI + one MCP server for screenshots, sweeps, baselines, diffs, axe-core a11y audits, HAR capture, and auth state — with parallel sweep workers, auto-healing selectors, and a plugin system. Zero browser bundled: drives your system Chrome via Playwright.",
   "homepage": "https://github.com/0xheycat/pursr",
@@ -77,10 +77,12 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "axe-core": "^4.12.1",
     "pdfkit": "^0.19.1",
     "pixelmatch": "^5.3.0",
-    "pngjs": "^7.0.0"
+    "pngjs": "^7.0.0",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "playwright-core": "*"

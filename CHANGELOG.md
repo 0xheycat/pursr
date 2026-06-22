@@ -1,3 +1,24 @@
+## 0.8.1
+
+**Official MCP SDK transport.**
+
+### Changed
+
+- Replaced the hand-written JSON-RPC and `Content-Length` stdio parser with `McpServer` and `StdioServerTransport` from `@modelcontextprotocol/sdk`.
+- Tool failures now use standard MCP tool results with `isError: true`.
+- Server version negotiation now reports the actual pursr package version.
+- Added explicit runtime dependencies on `@modelcontextprotocol/sdk` and `zod`.
+
+### Compatibility
+
+- Added an end-to-end integration test using the official `Client` and `StdioClientTransport`.
+- The SDK client verifies discovery of all 16 tools and completes a persistent open, act, snapshot, screenshot, diagnostics, resources, and close workflow.
+- Existing pursr tool names, schemas, resources, library exports, and CLI commands remain unchanged.
+
+### Tests
+
+- Full suite: 71 passing, including a real MCP subprocess/client round trip.
+
 ## 0.8.0
 
 **Persistent browser-agent sessions for MCP clients.**

@@ -1,8 +1,7 @@
 //  pursr — MCP stdio server (Model Context Protocol).
 //
-// Implements JSON-RPC 2.0 over stdio with Content-Length framing.
-// Exposes every pursr capability as an MCP tool for use by
-// Claude Code, Cursor, Continue, and any other MCP host.
+// Uses the official Model Context Protocol SDK over stdio and exposes every
+// pursr capability to Claude Code, Cursor, Codex, and other MCP hosts.
 //
 // Config via PURSR_MCP_CONFIG env or ~/./mcp-config.json:
 //   { "plugins": ["./my-plugin.js"], "defaultOutDir": "./mcp-output" }
@@ -25,12 +24,20 @@ import { makeOut, nowIso } from "./util.js";
 import { listResources, readResource, recordResource } from "./mcp-resources.js";
 import { createRequire } from "node:module";
 import { BrowserSessionManager } from "./session.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 
 const __require = createRequire(import.meta.url);
 let _pkg = { version: "0.1.0" };
 try { _pkg = __require("../package.json"); } catch {}
 
-const MCP_VERSION = "0.1.0";
+const MCP_VERSION = _pkg.version || "0.1.0";
 
 // ─── Config ──────────────────────────────────────────────────────────────
 
@@ -63,11 +70,18 @@ class McpError extends Error {
 class PursrMCPServer {
   constructor(config = {}) {
     this.config = config;
-    this._buffer = Buffer.alloc(0);
-    this._contentLength = -1;
-    this._initialized = false;
     this._verbose = !!config.verbose;
     this.sessions = new BrowserSessionManager({ outputDir: config.defaultOutDir || process.cwd() });
+    this.sdk = new McpServer(
+      { name: "pursr", version: MCP_VERSION },
+      {
+        capabilities: { tools: {}, resources: {} },
+        instructions: "Use a persistent pursr session for iterative visual work: open, snapshot, act, screenshot, inspect, diagnose, then close.",
+      },
+    );
+    this.server = this.sdk.server;
+    this.transport = null;
+    this._registerSdkHandlers();
   }
 
   log(...args) {
@@ -78,121 +92,42 @@ class PursrMCPServer {
     if (this.config.plugins?.length) {
       await loadPlugins(this.config.plugins);
     }
-    this.log("server started, plugins:", listPlugins());
-
-    process.stdin.on("data", (chunk) => {
-      this._buffer = Buffer.concat([this._buffer, chunk]);
-      this._processBuffer();
-    });
-    process.stdin.on("end", () => {
-      this.log("stdin closed");
+    this.transport = new StdioServerTransport();
+    this.transport.onclose = () => {
+      this.log("stdio transport closed");
       this.sessions.closeAll().catch(() => {});
+    };
+    await this.sdk.connect(this.transport);
+    this.log("server started with official MCP SDK, plugins:", listPlugins());
+  }
+
+  async close() {
+    await this.sessions.closeAll();
+    await this.sdk.close();
+  }
+
+  _registerSdkHandlers() {
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: this._toolDefs() }));
+    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      try {
+        const content = await this._callTool(request.params.name, request.params.arguments || {});
+        return { content };
+      } catch (error) {
+        this.log("tool error:", error.stack || error.message);
+        return {
+          isError: true,
+          content: [{ type: "text", text: JSON.stringify({ error: error.message, code: error.code || -32603 }, null, 2) }],
+        };
+      }
     });
-
-    process.on("uncaughtException", (err) => {
-      console.error("[pursr-mcp] uncaught:", err.message);
+    this.server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+      resources: listResources().map(this._toMcpResource, this),
+    }));
+    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      const data = readResource(request.params.uri);
+      if (!data) throw new Error("Resource not found: " + request.params.uri);
+      return { contents: [data] };
     });
-  }
-
-  // ── Buffer framing ──────────────────────────────────────────────────
-
-  _processBuffer() {
-    while (true) {
-      if (this._contentLength < 0) {
-        const idx = this._buffer.indexOf(Buffer.from("\r\n\r\n"));
-        if (idx === -1) break;
-        const header = this._buffer.slice(0, idx).toString("utf8");
-        const m = header.match(/Content-Length:\s*(\d+)/i);
-        if (m) this._contentLength = parseInt(m[1], 10);
-        this._buffer = this._buffer.slice(idx + 4);
-      }
-      if (this._contentLength > 0 && this._buffer.length >= this._contentLength) {
-        const raw = this._buffer.slice(0, this._contentLength).toString("utf8");
-        this._buffer = this._buffer.slice(this._contentLength);
-        this._contentLength = -1;
-        try {
-          const msg = JSON.parse(raw);
-          this._handleMessage(msg);
-        } catch (e) {
-          console.error("[pursr-mcp] invalid JSON:", e.message);
-        }
-      } else break;
-    }
-  }
-
-  _send(msg) {
-    const json = JSON.stringify(msg);
-    const bytes = Buffer.from(json, "utf8");
-    const header = `Content-Length: ${bytes.length}\r\n\r\n`;
-    process.stdout.write(header);
-    process.stdout.write(bytes);
-  }
-
-  // ── JSON-RPC dispatcher ─────────────────────────────────────────────
-
-  async _handleMessage(msg) {
-    if (!msg || msg.jsonrpc !== "2.0" || !msg.method) {
-      console.error("[pursr-mcp] skipping non-JSON-RPC message");
-      return;
-    }
-    const { method, id } = msg;
-
-    // Notifications — no id → no response
-    if (method === "notifications/initialized" || method === "notifications/cancelled") {
-      if (method === "notifications/initialized") this._initialized = true;
-      return;
-    }
-    if (id === undefined || id === null) return; // unnamed notification
-
-    try {
-      switch (method) {
-        case "initialize":
-          this._initialized = true;
-          this._send({
-            jsonrpc: "2.0", id,
-            result: {
-              protocolVersion: msg.params?.protocolVersion || "2024-11-05",
-              capabilities: { tools: {} },
-              serverInfo: { name: "pursr", version: MCP_VERSION },
-            },
-          });
-          break;
-
-        case "tools/list":
-          this._send({ jsonrpc: "2.0", id, result: { tools: this._toolDefs() } });
-          break;
-
-        case "resources/list":
-          this._send({ jsonrpc: "2.0", id, result: { resources: listResources().map(this._toMcpResource, this) } });
-          break;
-
-        case "resources/read":
-          if (!msg.params?.uri) throw new McpError(-32602, "Missing uri");
-          const data = readResource(msg.params.uri);
-          if (!data) throw new McpError(-32602, "Resource not found: " + msg.params.uri);
-          this._send({ jsonrpc: "2.0", id, result: { contents: [data] } });
-          break;
-
-        case "tools/call":
-          if (!msg.params?.name) throw new McpError(-32602, "Missing tool name");
-          const result = await this._callTool(msg.params.name, msg.params.arguments || {});
-          this._send({ jsonrpc: "2.0", id, result: { content: result } });
-          break;
-
-        default:
-          this._send({
-            jsonrpc: "2.0", id,
-            error: { code: -32601, message: `Unknown method: ${method}` },
-          });
-      }
-    } catch (e) {
-      if (e instanceof McpError) {
-        this._send({ jsonrpc: "2.0", id, error: { code: e.code, message: e.message } });
-      } else {
-        console.error("[pursr-mcp] handler error:", e.stack || e.message);
-        this._send({ jsonrpc: "2.0", id, error: { code: -32603, message: e.message } });
-      }
-    }
   }
 
   // ── Resource shape adapter ─────────────────────────────────────────
