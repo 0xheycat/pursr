@@ -122,3 +122,26 @@ test("spike: single frame capture", async () => {
   const r = await cli(["frames", `http://localhost:${port}/`, "3", "50", out]);
   assert.ok(r.files?.length >= 1, "should capture at least 1 frame");
 });
+
+test("persistent session preserves interaction state and returns agent evidence", async () => {
+  const { BrowserSessionManager } = await import("../src/session.js");
+  const manager = new BrowserSessionManager({ outputDir: out });
+  try {
+    const opened = await manager.open({ sessionId: "smoke", url: `http://localhost:${port}/`, flags: { width: 800, height: 600 } });
+    assert.equal(opened.sessionId, "smoke");
+    const acted = await manager.act("smoke", [{ type: "click", selector: "#go" }]);
+    assert.equal(acted.failed, false);
+    const snapshot = await manager.snapshot("smoke", { selector: "body", maxNodes: 20 });
+    assert.ok(snapshot.nodes.some((node) => node.text === "clicked"), "clicked state should persist in the same tab");
+    const inspected = await manager.inspect("smoke", "#out");
+    assert.equal(inspected.computedStyle.display, "block");
+    const shot = await manager.screenshot("smoke", { out: join(out, "session.png") });
+    assert.ok(existsSync(shot.out));
+    assert.ok(shot.data.length > 100, "screenshot should include base64 image data");
+    const diagnostics = manager.diagnostics("smoke");
+    assert.ok(Array.isArray(diagnostics.console));
+  } finally {
+    await manager.closeAll();
+  }
+  assert.equal(manager.size, 0);
+});

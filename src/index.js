@@ -44,6 +44,7 @@ import { runSnap, approveSnapsAsBaselines } from "./snap.js";
 import { runCheck } from "./check.js";
 import { renderSweepPdf } from "./report.js";
 import { aiDiffSummary, aiDiffSidecar } from "./ai-diff.js";
+import { BrowserSessionManager } from "./session.js";
 
 
 // Derive VERSION from package.json to prevent drift
@@ -86,6 +87,7 @@ export {
   runDiffWithAi,
   renderSweepPdf,
   aiDiffSummary, aiDiffSidecar,
+  BrowserSessionManager,
   VERSION,
 };
 
@@ -107,5 +109,6 @@ export default {
   listResources, readResource, recordResource,
   // v6: PDF report, AI diff summary
   runDiffWithAi, renderSweepPdf, aiDiffSummary, aiDiffSidecar,
+  BrowserSessionManager,
   VERSION,
 };

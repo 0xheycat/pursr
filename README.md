@@ -33,8 +33,8 @@
 Most teams need **five separate tools** to do visual QA: a screenshot CLI, a regression diff runner, an accessibility auditor, a way to share captures with an AI assistant, and a way to **turn all of that into a PDF report** for stakeholders. **pursr is all five** - built as a single Node.js package with:
 
 - **A unified CLI** (`pursr`) for every capture, diff, sweep, and audit.
-- **An MCP stdio server** (`pursr-mcp`) so Claude Code, Cursor, and Continue can take screenshots, run sweeps, and inspect prior captures as MCP resources.
-- **A library** with 34 named exports and 18 subpath modules, so you can embed it in your own tooling.
+- **An agent-grade MCP stdio server** (`pursr-mcp`) with persistent tabs, direct image responses, rendered-state inspection, actions, diagnostics, screenshots, sweeps, and resources.
+- **A library API** with 23 subpath modules, so you can embed the browser and QA primitives in your own tooling.
 - **A plugin system** for custom viewports, sweep ops, and capture hooks.
 - **PDF reports + AI diff summaries** built in - render a sweep to a styled PDF or ask a vision LLM to describe the regression in plain language.
 - **Zero browser bundled** - drives your system Chrome via Playwright. No 200 MB Chromium download.
@@ -96,7 +96,7 @@ pursr sweep ./plan.json   # see plans/ for an example
 | HAR capture | HAR 1.2 spec, written next to your shot | `--har ./req.har.json` |
 | Auth state | Playwright storageState, reuse logged-in sessions | `--auth-state admin` |
 | Plugins | custom viewports, sweep ops, before/after hooks | `pursr-plugin-*` |
-| MCP server | 7 tools + resources/list & resources/read for Claude/Cursor | `npx pursr-mcp` |
+| MCP server | 16 tools + resources/list & resources/read for Claude/Cursor | `npx pursr-mcp` |
 | PDF report | render sweep.json to a styled, embedded-PNG A4 PDF | `pursr report --sweep ./sweep.json` |
 | AI diff summary | vision LLM describes the diff in plain language | `pursr diff ... --ai` |
 
@@ -188,6 +188,14 @@ npx pursr-mcp --verbose
 
 | Tool | Description |
 | --- | --- |
+| `pursr_session_open` | Open a persistent browser tab for iterative agent work |
+| `pursr_sessions` | List active browser sessions |
+| `pursr_snapshot` | Visible rendered nodes, geometry, semantics, and computed styles |
+| `pursr_act` | Click, hover, fill, type, scroll, navigate, reload, and more |
+| `pursr_screenshot` | Return the current PNG directly to the vision model |
+| `pursr_inspect` | Inspect exact geometry, computed styles, and stacking ancestors |
+| `pursr_diagnostics` | Read console, page errors, failed requests, and HTTP failures |
+| `pursr_session_close` | Close the tab and release its browser process |
 | `pursr_shoot` | Rich screenshot capture (viewport, grid, layer, cursor, camera, animation freeze, HAR) |
 | `pursr_diff` | Pixel-diff a URL against a reference PNG |
 | `pursr_sweep` | Execute a batch sweep plan |
@@ -195,6 +203,32 @@ npx pursr-mcp --verbose
 | `pursr_probe` | Health-check a URL |
 | `pursr_audit` | axe-core WCAG audit + highlighted screenshot |
 | `pursr_dom_snapshot` | Full DOM + selector map snapshot |
+| `pursr_check` | CI visual regression check against a stable baseline |
+
+### Agent workflow
+
+Use persistent sessions for the same inspect-act-verify loop as an interactive browser agent:
+
+1. Call `pursr_session_open` once with a stable `sessionId`.
+2. Call `pursr_snapshot` to understand the rendered page before acting.
+3. Use `pursr_act` for a small, ordered interaction sequence.
+4. Call `pursr_screenshot` when visual judgment matters; the model receives the PNG directly.
+5. Use `pursr_inspect` for layout, clipping, typography, or stacking problems.
+6. Read `pursr_diagnostics`, then reload and verify after source changes.
+7. Call `pursr_session_close` when the review is complete.
+
+Example action arguments:
+
+```json
+{
+  "sessionId": "farm",
+  "actions": [
+    { "type": "hover", "selector": "role=button|Build" },
+    { "type": "click", "selector": "text=Barn" },
+    { "type": "wait", "selector": "role=dialog" }
+  ]
+}
+```
 
 ### Exposed Resources
 

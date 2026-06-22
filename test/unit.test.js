@@ -635,3 +635,14 @@ test("runCheck with update=true is a no-op in the no-baseline path", async () =>
   assert.equal(r.status, "no-baseline");
   assert.equal(r.exitCode, 2);
 });
+
+test("MCP exposes persistent browser-agent tools", async () => {
+  const { PursrMCPServer } = await import("../src/mcp.js");
+  const server = new PursrMCPServer({});
+  const names = server._toolDefs().map((tool) => tool.name);
+  for (const name of [
+    "pursr_session_open", "pursr_sessions", "pursr_snapshot", "pursr_act",
+    "pursr_screenshot", "pursr_inspect", "pursr_diagnostics", "pursr_session_close",
+  ]) assert.ok(names.includes(name), `missing MCP tool: ${name}`);
+  assert.equal(new Set(names).size, names.length, "MCP tool names must be unique");
+});

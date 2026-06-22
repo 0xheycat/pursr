@@ -111,6 +111,27 @@ const SNAPSHOT_PAGE_SCRIPT = `(() => {
       visible,
     };
 
+    if (visible) {
+      const computed = getComputedStyle(el);
+      entry.computedStyle = {
+        display: computed.display,
+        position: computed.position,
+        zIndex: computed.zIndex,
+        overflowX: computed.overflowX,
+        overflowY: computed.overflowY,
+        opacity: computed.opacity,
+        visibility: computed.visibility,
+        color: computed.color,
+        backgroundColor: computed.backgroundColor,
+        fontFamily: computed.fontFamily,
+        fontSize: computed.fontSize,
+        fontWeight: computed.fontWeight,
+        lineHeight: computed.lineHeight,
+        transform: computed.transform,
+        boxShadow: computed.boxShadow,
+      };
+    }
+
     // get computed role from accessibility tree
     try { entry.ariaRole = el.computedRole || el.getAttribute('role') || null; } catch {}
 

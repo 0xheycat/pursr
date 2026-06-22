@@ -24,6 +24,7 @@ import { loadPlugins, listPlugins } from "./plugin.js";
 import { makeOut, nowIso } from "./util.js";
 import { listResources, readResource, recordResource } from "./mcp-resources.js";
 import { createRequire } from "node:module";
+import { BrowserSessionManager } from "./session.js";
 
 const __require = createRequire(import.meta.url);
 let _pkg = { version: "0.1.0" };
@@ -66,6 +67,7 @@ class PursrMCPServer {
     this._contentLength = -1;
     this._initialized = false;
     this._verbose = !!config.verbose;
+    this.sessions = new BrowserSessionManager({ outputDir: config.defaultOutDir || process.cwd() });
   }
 
   log(...args) {
@@ -84,6 +86,7 @@ class PursrMCPServer {
     });
     process.stdin.on("end", () => {
       this.log("stdin closed");
+      this.sessions.closeAll().catch(() => {});
     });
 
     process.on("uncaughtException", (err) => {
@@ -207,6 +210,84 @@ class PursrMCPServer {
 
   _toolDefs() {
     return [
+      {
+        name: "pursr_session_open",
+        description: "Open a persistent browser tab for iterative agent work. State, hover, scroll, dialogs, and navigation persist until closed.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "Initial URL" },
+            sessionId: { type: "string", description: "Stable session name; generated when omitted" },
+            preset: { type: "string", description: "Viewport preset" },
+            width: { type: "number" }, height: { type: "number" }, dpr: { type: "number" },
+            storageState: { description: "Playwright storageState object or file path" },
+          },
+          required: ["url"],
+        },
+      },
+      {
+        name: "pursr_sessions",
+        description: "List active persistent browser sessions.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "pursr_snapshot",
+        description: "Read the current rendered state from a persistent session as concise visible nodes, geometry, semantics, and computed visual styles.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: { type: "string" }, selector: { type: "string", description: "CSS root selector (default body)" },
+            maxNodes: { type: "number", description: "Maximum returned nodes, 1-1000" },
+            includeStyles: { type: "boolean", description: "Include compact computed styles (default true)" },
+          },
+          required: ["sessionId"],
+        },
+      },
+      {
+        name: "pursr_act",
+        description: "Perform ordered actions in a persistent session. Supported types: click, hover, fill, type, check, select, press, scroll, wait, sleep, navigate, reload, eval.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: { type: "string" },
+            actions: { type: "array", minItems: 1, maxItems: 50, items: { type: "object" } },
+          },
+          required: ["sessionId", "actions"],
+        },
+      },
+      {
+        name: "pursr_screenshot",
+        description: "Capture the current persistent session and return the PNG directly to the model as image content.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: { type: "string" }, out: { type: "string" }, full: { type: "boolean" },
+            selector: { type: "string", description: "Capture only the first matching element" },
+          },
+          required: ["sessionId"],
+        },
+      },
+      {
+        name: "pursr_inspect",
+        description: "Inspect one rendered element: HTML, exact geometry, computed style, and clipping/stacking ancestors.",
+        inputSchema: {
+          type: "object", properties: { sessionId: { type: "string" }, selector: { type: "string" } }, required: ["sessionId", "selector"],
+        },
+      },
+      {
+        name: "pursr_diagnostics",
+        description: "Read console messages, page errors, failed requests, and HTTP 4xx/5xx responses accumulated during a persistent session.",
+        inputSchema: {
+          type: "object", properties: { sessionId: { type: "string" }, clear: { type: "boolean" } }, required: ["sessionId"],
+        },
+      },
+      {
+        name: "pursr_session_close",
+        description: "Close a persistent browser session and release its browser process.",
+        inputSchema: {
+          type: "object", properties: { sessionId: { type: "string" } }, required: ["sessionId"],
+        },
+      },
       {
         name: "pursr_shoot",
         description: "Capture a screenshot of a URL with full feature control (viewport, grid, layer, cursor, camera, animation freeze). Returns PNG path and sidecar metadata.",
@@ -356,6 +437,14 @@ class PursrMCPServer {
 
   async _callTool(name, args) {
     switch (name) {
+      case "pursr_session_open":  return await this._sessionOpen(args);
+      case "pursr_sessions":      return this._text(this.sessions.list());
+      case "pursr_snapshot":      return await this._sessionSnapshot(args);
+      case "pursr_act":           return await this._sessionAct(args);
+      case "pursr_screenshot":    return await this._sessionScreenshot(args);
+      case "pursr_inspect":       return await this._sessionInspect(args);
+      case "pursr_diagnostics":   return this._sessionDiagnostics(args);
+      case "pursr_session_close": return await this._sessionClose(args);
       case "pursr_shoot":        return await this._shoot(args);
       case "pursr_diff":         return await this._diff(args);
       case "pursr_sweep":        return await this._sweep(args);
@@ -369,6 +458,58 @@ class PursrMCPServer {
   }
 
   // ── Tool implementations ────────────────────────────────────────────
+
+  _text(value) {
+    return [{ type: "text", text: JSON.stringify(value, null, 2) }];
+  }
+
+  _requireSessionId(args) {
+    if (!args.sessionId) throw new McpError(-32602, "Missing required: sessionId");
+    return args.sessionId;
+  }
+
+  async _sessionOpen(args) {
+    if (!args.url) throw new McpError(-32602, "Missing required: url");
+    const flags = { preset: args.preset, width: args.width, height: args.height, dpr: args.dpr };
+    const result = await this.sessions.open({ sessionId: args.sessionId, url: args.url, flags, storageState: args.storageState });
+    return this._text(result);
+  }
+
+  async _sessionSnapshot(args) {
+    const result = await this.sessions.snapshot(this._requireSessionId(args), args);
+    return this._text(result);
+  }
+
+  async _sessionAct(args) {
+    const result = await this.sessions.act(this._requireSessionId(args), args.actions);
+    return this._text(result);
+  }
+
+  async _sessionScreenshot(args) {
+    const result = await this.sessions.screenshot(this._requireSessionId(args), args);
+    recordResource({
+      kind: "session", id: args.sessionId, name: `session screenshot: ${args.sessionId}`,
+      description: result.url, uri: `pursr://session/${encodeURIComponent(args.sessionId)}`,
+      mimeType: result.mimeType, file: result.out, meta: { url: result.url, ts: nowIso() },
+    });
+    return [
+      { type: "text", text: JSON.stringify({ sessionId: result.sessionId, out: result.out, url: result.url }, null, 2) },
+      { type: "image", data: result.data, mimeType: result.mimeType },
+    ];
+  }
+
+  async _sessionInspect(args) {
+    const result = await this.sessions.inspect(this._requireSessionId(args), args.selector);
+    return this._text(result);
+  }
+
+  _sessionDiagnostics(args) {
+    return this._text(this.sessions.diagnostics(this._requireSessionId(args), { clear: !!args.clear }));
+  }
+
+  async _sessionClose(args) {
+    return this._text(await this.sessions.close(this._requireSessionId(args)));
+  }
 
   async _shoot(args) {
     const url = args.url;
@@ -397,7 +538,9 @@ class PursrMCPServer {
       file: out, meta: { url, flags, ts: sidecar?.ts },
     });
 
-    return [{ type: "text", text: JSON.stringify({ out, meta: sidecar }, null, 2) }];
+    const content = [{ type: "text", text: JSON.stringify({ out, meta: sidecar }, null, 2) }];
+    if (existsSync(out)) content.push({ type: "image", data: readFileSync(out).toString("base64"), mimeType: "image/png" });
+    return content;
   }
 
   async _diff(args) {
@@ -414,7 +557,9 @@ class PursrMCPServer {
       if (k !== "url" && k !== "ref" && k !== "out" && k !== "threshold") flags[k] = v;
     }
     const result = await runDiff(url, ref, out, threshold, flags);
-    return [{ type: "text", text: JSON.stringify(result, null, 2) }];
+    const content = [{ type: "text", text: JSON.stringify(result, null, 2) }];
+    if (existsSync(out)) content.push({ type: "image", data: readFileSync(out).toString("base64"), mimeType: "image/png" });
+    return content;
   }
 
   async _sweep(args) {

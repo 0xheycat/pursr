@@ -1,3 +1,26 @@
+## 0.8.0
+
+**Persistent browser-agent sessions for MCP clients.**
+
+### Added
+
+- Eight session tools: `pursr_session_open`, `pursr_sessions`, `pursr_snapshot`, `pursr_act`, `pursr_screenshot`, `pursr_inspect`, `pursr_diagnostics`, and `pursr_session_close`.
+- Persistent browser state across inspect, hover, click, typing, scrolling, navigation, reload, and screenshot calls.
+- Direct MCP image content from `pursr_screenshot`, `pursr_shoot`, and `pursr_diff` so vision-capable agents can inspect captures without separately reading files.
+- Compact rendered-state snapshots with geometry, semantics, UI state, and computed visual styles.
+- Element inspection with computed styles and clipping/stacking ancestor context.
+- Session diagnostics for console messages, page errors, request failures, and HTTP 4xx/5xx responses.
+- Public `BrowserSessionManager` API and `pursr/session` subpath export.
+
+### Changed
+
+- DOM snapshot entries now include actual computed styles for visible elements.
+- MCP surface grows from 8 capture/regression tools to 16 total tools.
+
+### Tests
+
+- Added persistent-state browser smoke coverage and MCP tool-manifest regression coverage. Suite: 70 passing.
+
 ## 0.7.3 (patch)
 
 **Author field added + brand/name audit.**
