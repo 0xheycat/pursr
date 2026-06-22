@@ -12,8 +12,8 @@
   "funding": "https://github.com/sponsors/0xheycat",
   "type": "module",
   "bin": {
-    "pursr": "./bin/pursr.mjs",
-    "pursr-mcp": "./bin/pursr-mcp.mjs"
+    "pursr": "bin/pursr.mjs",
+    "pursr-mcp": "bin/pursr-mcp.mjs"
   },
   "main": "./src/index.js",
   "exports": {
