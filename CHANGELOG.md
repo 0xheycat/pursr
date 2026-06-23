@@ -1,3 +1,15 @@
+## 0.10.2 - 2026-06-23
+
+**First-run setup and agent readiness improvements.**
+
+### Added
+
+- `pursr doctor` diagnoses Node, `playwright-core`, Chrome-compatible browser discovery, and packaged `SKILL.md` availability.
+- `pursr setup` prints safe first-run guidance without downloading browsers automatically.
+- Browser discovery now checks Chrome, Edge, Brave, Chromium, Dev/Beta/Canary/Nightly channels, PATH executables, and explicit `PURSR_BROWSER_PATH` / `CHROME_PATH`.
+- Lightweight update notification checks npm at most once per 24 hours, writes to stderr, skips CI/non-interactive runs, and can be disabled with `PURSR_NO_UPDATE_NOTIFIER=1`.
+- `SKILL.md` now describes first-run setup, operator mindset, capability fallback, social/form drafting, and side-effect approval boundaries.
+
 ## 0.10.1
 
 **CLI argument parser and output-path reliability patch.**

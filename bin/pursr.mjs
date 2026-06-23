@@ -18,6 +18,7 @@ import { captureDomSnapshot } from "../src/dom-snapshot.js";
 import { listViewports } from "../src/viewport.js";
 import { asNum, readArg, makeOut, __PURSR_GET } from "../src/util.js";
 import { filePathArg, parseCommandArgs } from "../src/cli-args.js";
+import { notifyUpdate } from "../src/update-notifier.js";
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { readFileSync as _readFileSync } from "node:fs";
@@ -36,6 +37,7 @@ const USAGE = `usage:
          --no-animation --wait-frame 600 --full
   @file prefix reads argv contents from file (UTF-8, newline trimmed).
   report: pursr report --sweep <sweep.json> [--out <report.pdf>] [--title "..."] [--no-embed]
+  setup: pursr doctor [--json] | pursr setup [--json]
          diff extras: --ai [--ai-model M] [--ai-base-url U] [--ai-api-key K]
   plugins: pursr automatically loads built-in plugins from plugins/.
   You can also pass --plugin <path> to load custom plugins (repeatable).`;
@@ -71,6 +73,7 @@ await loadPlugins(pluginPaths);
 
 (async () => {
   try {
+    await notifyUpdate({ currentVersion: VERSION, stdout: process.stdout, stderr: process.stderr });
     if (cliFlags.help) { console.log(JSON.stringify({ usage: USAGE }, null, 2)); return; }
     switch (cmd) {
       case undefined: case "help": case "--help": case "-h": { console.log(JSON.stringify({ usage: USAGE }, null, 2)); break; }
@@ -135,6 +138,22 @@ await loadPlugins(pluginPaths);
         break;
       }
       case "viewports": { console.log(JSON.stringify(listViewports(), null, 2)); break; }
+      case "doctor": {
+        const { runDoctor, renderDoctorText } = await import("../src/doctor.js");
+        const r = await runDoctor();
+        if (cliFlags.json) console.log(JSON.stringify(r, null, 2));
+        else console.log(renderDoctorText(r));
+        process.exitCode = r.ok ? 0 : 1;
+        break;
+      }
+      case "setup": {
+        const { runSetup, renderSetupText } = await import("../src/doctor.js");
+        const r = await runSetup();
+        if (cliFlags.json) console.log(JSON.stringify(r, null, 2));
+        else console.log(renderSetupText(r));
+        process.exitCode = r.ok ? 0 : 1;
+        break;
+      }
       case "shoot": {
         if (!url) die("missing url");
         const out = outputPath(b, "shoot.png");

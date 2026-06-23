@@ -12,7 +12,11 @@ let outputDir;
 
 function runCli(args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["bin/pursr.mjs", ...args], { cwd: process.cwd(), windowsHide: true });
+    const child = spawn(process.execPath, ["bin/pursr.mjs", ...args], {
+      cwd: process.cwd(),
+      windowsHide: true,
+      env: { ...process.env, PURSR_NO_UPDATE_NOTIFIER: "1" },
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => { stdout += chunk; });
@@ -108,4 +112,16 @@ test("CLI accepts flags before positionals and honors output paths", { timeout: 
   const sweepResult = jsonResult(await runCli(["sweep", "--out-dir", sweepDir, sweepPlan]));
   assert.equal(sweepResult.outDir, sweepDir);
   assert.ok(existsSync(join(sweepDir, "00-home.png")));
+});
+
+test("doctor and setup commands are available", async () => {
+  const doctor = await runCli(["doctor", "--json"]);
+  assert.ok([0, 1].includes(doctor.code), doctor.stderr || doctor.stdout);
+  const doctorJson = JSON.parse(doctor.stdout);
+  assert.ok(Array.isArray(doctorJson.checks));
+
+  const setup = await runCli(["setup", "--json"]);
+  assert.ok([0, 1].includes(setup.code), setup.stderr || setup.stdout);
+  const setupJson = JSON.parse(setup.stdout);
+  assert.ok(Array.isArray(setupJson.recommended));
 });

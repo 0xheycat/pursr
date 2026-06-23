@@ -3,12 +3,16 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { findBrowserExecutable } from "./browser-discovery.js";
 
 let _chromium = null;
-async function getChromium() {
-  if (_chromium) return _chromium;
+export async function resolvePlaywrightCore() {
+  if (_chromium) return { chromium: _chromium, source: "cached" };
   // Try local node_modules first
-  try { return _chromium = (await import("playwright-core")).chromium; } catch {}
+  try {
+    _chromium = (await import("playwright-core")).chromium;
+    return { chromium: _chromium, source: "playwright-core" };
+  } catch {}
   // Try Codex cua_node runtime (current Codex Desktop bundles it).
   // The cua_node folder has a hash subdir (e.g. 789504f803e82e2b), so we
   // walk it to find the playwright-core entry.
@@ -21,7 +25,8 @@ async function getChromium() {
       if (existsSync(cand)) {
         try {
           const url = "file:///" + cand.replace(/\\/g, "/");
-          return _chromium = (await import(url)).chromium;
+          _chromium = (await import(url)).chromium;
+          return { chromium: _chromium, source: "codex-cua-node" };
         } catch {}
       }
     }
@@ -29,27 +34,20 @@ async function getChromium() {
   throw new Error("playwright-core not found. Install it: npm i -D playwright-core");
 }
 
-const CHROME_PATHS = [
-  "C:/Program Files/Google/Chrome/Application/chrome.exe",
-  "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-  "/usr/bin/google-chrome",
-  "/usr/bin/chromium-browser",
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-];
-function findChrome() {
-  for (const p of CHROME_PATHS) if (existsSync(p)) return p;
-  return null;
+async function getChromium() {
+  const resolved = await resolvePlaywrightCore();
+  return resolved.chromium;
 }
 
 const BROWSER_ARGS = Object.freeze(["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]);
 
 export async function launch(options = {}) {
   const chromium = await getChromium();
-  const exec = findChrome();
-  if (!exec) throw new Error("system Chrome not found in standard paths");
+  const exec = options.executablePath || findBrowserExecutable();
+  if (!exec) throw new Error("Chrome-compatible browser not found. Run: pursr doctor");
   return await chromium.launch({
     headless: options.headless !== false,
-    executablePath: options.executablePath || exec,
+    executablePath: exec,
     slowMo: Math.max(0, Number(options.slowMo) || 0),
     args: [...BROWSER_ARGS, ...(Array.isArray(options.args) ? options.args : [])],
   });

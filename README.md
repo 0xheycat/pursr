@@ -38,7 +38,8 @@ Most teams need **five separate tools** to do visual QA: a screenshot CLI, a reg
 - **A library API** with 25 subpath modules, so you can embed the browser and QA primitives in your own tooling.
 - **A plugin system** for custom viewports, sweep ops, and capture hooks.
 - **PDF reports + AI diff summaries** built in - render a sweep to a styled PDF or ask a vision LLM to describe the regression in plain language.
-- **Zero browser bundled** - drives your system Chrome via Playwright. No 200 MB Chromium download.
+- **Zero browser bundled** - drives your system Chrome, Edge, Brave, or Chromium via Playwright. No surprise browser download during install.
+- **First-run doctor + update notices** - diagnose missing browser/runtime pieces and get lightweight release notifications without breaking CI or JSON output.
 
 ## Install
 
@@ -50,9 +51,25 @@ npm install --save-dev playwright-core   # peer dep - bring your own Chrome
 Then verify:
 
 ```bash
-pursr viewports         # list 10+ registered viewport presets
-pursr probe https://example.com   # health check
+pursr doctor                    # check Node, playwright-core, browser, and SKILL.md
+pursr setup                     # print next steps if anything is missing
+pursr viewports                 # list 10+ registered viewport presets
+pursr probe https://example.com # health check
 ```
+
+Pursr intentionally does **not** download browsers during `npm install`. Install Chrome, Edge, Brave, or Chromium yourself, or point Pursr at a Chrome-compatible executable:
+
+```bash
+# Windows
+setx PURSR_BROWSER_PATH "C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+# macOS/Linux
+export PURSR_BROWSER_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+```
+
+Browser discovery checks standard global installs, user installs, Dev/Beta/Canary/Nightly channels, and executable names found in `PATH` across Windows, macOS, and Linux. Current target is Chromium-family browsers; Firefox/WebKit are planned, but not claimed as stable targets yet.
+
+CLI update notifications are cached for 24 hours, written to stderr, and disabled automatically in CI/non-interactive runs. Disable them manually with `PURSR_NO_UPDATE_NOTIFIER=1`.
 
 ## 30 seconds
 
@@ -167,6 +184,8 @@ pursr full https://example.com --preset desktop-1280 --out-dir ./captures
 
 | Subcommand | Purpose |
 | --- | --- |
+| `doctor` | Diagnose Node, `playwright-core`, browser discovery, and packaged skill availability |
+| `setup` | Print first-run setup guidance without auto-installing browsers |
 | `probe` | Health check (HTTP status, page title) |
 | `shot` / `full` | Viewport / full-page screenshot |
 | `eval` | Execute JS in the page, return result |

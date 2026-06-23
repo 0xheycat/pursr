@@ -9,6 +9,9 @@ import {
 } from "../src/util.js";
 import { listViewports, resolveViewport, VIEWPORTS } from "../src/viewport.js";
 import { resolveLocator, parseTextSelector } from "../src/selector.js";
+import { browserCandidates, browserSetupHints, discoverBrowsers } from "../src/browser-discovery.js";
+import { compareVersions, shouldCheckForUpdate } from "../src/update-notifier.js";
+import { renderDoctorText, renderSetupText } from "../src/doctor.js";
 
 // --- util.js ---
 
@@ -164,6 +167,81 @@ test("resolveLocator dispatches prefixes", async () => {
   // We can't easily test without a page, but we can verify no crash on syntax
   assert.ok(typeof resolveLocator === "function");
   assert.ok(typeof parseTextSelector === "function");
+});
+
+test("browser discovery honors explicit PURSR_BROWSER_PATH first", () => {
+  const env = { PURSR_BROWSER_PATH: "C:\\Custom\\chrome.exe", LOCALAPPDATA: "C:\\Users\\me\\AppData\\Local" };
+  const candidates = browserCandidates({ platform: "win32", env, homeDir: "C:\\Users\\me" });
+  assert.equal(candidates[0], "C:\\Custom\\chrome.exe");
+  const discovered = discoverBrowsers({
+    platform: "win32",
+    env,
+    homeDir: "C:\\Users\\me",
+    exists: (path) => path === "C:\\Custom\\chrome.exe",
+  });
+  assert.equal(discovered.preferred, "C:\\Custom\\chrome.exe");
+});
+
+test("browser discovery includes developer channels and PATH executables", () => {
+  const winCandidates = browserCandidates({
+    platform: "win32",
+    env: { PATH: "C:\\Tools", PATHEXT: ".EXE", LOCALAPPDATA: "C:\\Users\\me\\AppData\\Local" },
+    homeDir: "C:\\Users\\me",
+  });
+  assert.ok(winCandidates.some((path) => path.includes("Chrome Dev")));
+  assert.ok(winCandidates.some((path) => path.includes("Chrome SxS")));
+  assert.ok(winCandidates.some((path) => path.includes("Edge Dev")));
+  assert.ok(winCandidates.some((path) => path.includes("Brave-Browser-Nightly")));
+  assert.ok(winCandidates.some((path) => path === "C:\\Tools\\chrome.exe"));
+
+  const macCandidates = browserCandidates({
+    platform: "darwin",
+    env: { PATH: "/opt/homebrew/bin:/usr/local/bin" },
+    homeDir: "/Users/me",
+  });
+  assert.ok(macCandidates.some((path) => path.includes("Google Chrome Canary.app")));
+  assert.ok(macCandidates.some((path) => path.includes("Microsoft Edge Dev.app")));
+  assert.ok(macCandidates.some((path) => path.includes("Brave Browser Nightly.app")));
+  assert.ok(macCandidates.some((path) => path === "/opt/homebrew/bin/google-chrome"));
+
+  const linuxCandidates = browserCandidates({
+    platform: "linux",
+    env: { PATH: "/usr/local/bin:/opt/bin" },
+    homeDir: "/home/me",
+  });
+  assert.ok(linuxCandidates.includes("/usr/bin/google-chrome-beta"));
+  assert.ok(linuxCandidates.includes("/usr/bin/microsoft-edge-dev"));
+  assert.ok(linuxCandidates.includes("/usr/bin/brave-browser-nightly"));
+  assert.ok(linuxCandidates.includes("/usr/local/bin/google-chrome"));
+});
+
+test("browser setup hints are platform-specific", () => {
+  assert.ok(browserSetupHints("win32").some((hint) => hint.includes("setx PURSR_BROWSER_PATH")));
+  assert.ok(browserSetupHints("darwin").some((hint) => hint.includes("/Applications/Google Chrome.app")));
+  assert.ok(browserSetupHints("linux").some((hint) => hint.includes("/usr/bin/google-chrome")));
+  assert.ok(browserSetupHints("linux").some((hint) => hint.includes("PATH-installed")));
+});
+
+test("update notifier version compare and TTY gating", () => {
+  assert.equal(compareVersions("0.10.2", "0.10.1"), 1);
+  assert.equal(compareVersions("0.10.1", "0.10.1"), 0);
+  assert.equal(compareVersions("0.9.9", "0.10.1"), -1);
+  assert.equal(shouldCheckForUpdate({ env: { CI: "1" }, stdout: { isTTY: true }, stderr: { isTTY: true } }), false);
+  assert.equal(shouldCheckForUpdate({ env: {}, stdout: { isTTY: false }, stderr: { isTTY: true } }), false);
+});
+
+test("doctor and setup render helpful text", () => {
+  const doctor = {
+    ok: false,
+    checks: [
+      { name: "node", ok: true, version: "v20.0.0", required: ">=18" },
+      { name: "browser", ok: false, found: [], preferred: null },
+    ],
+    hints: ["Install Chrome"],
+  };
+  assert.match(renderDoctorText(doctor), /attention needed/);
+  assert.match(renderDoctorText(doctor), /Install Chrome/);
+  assert.match(renderSetupText({ ok: false, doctor, recommended: ["Run pursr doctor"] }), /manual steps required/);
 });
 
 test("runShoot no-throw contract — error path returns object", () => {
