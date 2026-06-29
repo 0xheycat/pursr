@@ -21,7 +21,8 @@ const tools = [
 
 http.createServer(async (req, res) => {
   try {
-    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    const host = req.headers.host || "localhost";
+    const url = new URL(req.url || "/", "http://" + host);
     if (req.method === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, name: "notion-github-workflow-mcp" });
     if (req.method !== "POST" || url.pathname !== "/mcp") return json(res, 404, { error: "Not found" });
 
@@ -34,7 +35,7 @@ http.createServer(async (req, res) => {
   } catch (error) {
     return rpc(res, null, null, { code: -32603, message: error.message }, 500);
   }
-}).listen(PORT, HOST, () => console.error(`notion-github-workflow-mcp listening on http://${HOST}:${PORT}/mcp`));
+}).listen(PORT, HOST, () => console.error("notion-github-workflow-mcp listening on http://" + HOST + ":" + PORT + "/mcp"));
 
 async function handleMcp(msg, token) {
   const id = msg?.id ?? null;
@@ -42,7 +43,7 @@ async function handleMcp(msg, token) {
   if (msg?.method === "notifications/initialized") return ok(id, {});
   if (msg?.method === "tools/list") return ok(id, { tools });
   if (msg?.method === "tools/call") return ok(id, { content: [{ type: "text", text: JSON.stringify(await callTool(msg.params?.name, msg.params?.arguments || {}, token), null, 2) }] });
-  return { jsonrpc: "2.0", id, error: { code: -32601, message: `Unsupported method: ${msg?.method}` } };
+  return { jsonrpc: "2.0", id, error: { code: -32601, message: "Unsupported method: " + msg?.method } };
 }
 
 async function callTool(name, args, token) {
@@ -56,7 +57,7 @@ async function callTool(name, args, token) {
     case "trigger_workflow_dispatch": return gh(token, `/repos/${args.owner}/${args.repo}/actions/workflows/${encodeURIComponent(args.workflowId)}/dispatches`, { method: "POST", body: { ref: args.ref, inputs: args.inputs || {} }, expected: [201, 202, 204] });
     case "pr_risk_report": return prRiskReport(token, args);
     case "draft_changelog_since": return draftChangelog(token, args);
-    default: throw new Error(`Unknown tool: ${name}`);
+    default: throw new Error("Unknown tool: " + name);
   }
 }
 
