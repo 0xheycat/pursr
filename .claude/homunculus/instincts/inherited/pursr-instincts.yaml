@@ -1,0 +1,324 @@
+# Instincts generated from https://github.com/0xheycat/pursr
+# Generated: 2026-06-29T07:59:43.012Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: pursr-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/0xheycat/pursr
+---
+
+# Pursr Commit Length
+
+## Action
+
+Keep commit messages concise (~40 characters)
+
+## Evidence
+
+- Average commit message length: 40 chars
+- Based on 3 commits
+
+---
+id: pursr-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/0xheycat/pursr
+---
+
+# Pursr Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: pursr-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/0xheycat/pursr
+---
+
+# Pursr Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: pursr-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/0xheycat/pursr
+---
+
+# Pursr Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: pursr-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/0xheycat/pursr
+---
+
+# Pursr Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: pursr-workflow-single-file-feature-fix
+trigger: "when doing single file feature fix"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/0xheycat/pursr
+---
+
+# Pursr Workflow Single File Feature Fix
+
+## Action
+
+Follow the single-file-feature-fix workflow:
+1. Identify issue or improvement needed in server logic.
+2. Edit 'examples/notion-github-workflow-mcp/src/server.js' to address the issue.
+3. Commit the change with a descriptive message.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: examples/notion-github-workflow-mcp/src/server.js
+
+---
+id: pursr-instinct-filename-camelCase
+trigger: "When creating or renaming a file in the codebase"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: 0xheycat/pursr
+---
+
+# Pursr Instinct Filename CamelCase
+
+## Action
+
+Name the file using camelCase convention
+
+## Evidence
+
+- Pattern in namingConventions.files
+- Observed in examples/notion-github-workflow-mcp/src/server.js
+
+---
+id: pursr-instinct-function-camelCase
+trigger: "When defining a function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: 0xheycat/pursr
+---
+
+# Pursr Instinct Function CamelCase
+
+## Action
+
+Name the function using camelCase convention
+
+## Evidence
+
+- Pattern in namingConventions.functions
+
+---
+id: pursr-instinct-class-PascalCase
+trigger: "When defining a class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: 0xheycat/pursr
+---
+
+# Pursr Instinct Class PascalCase
+
+## Action
+
+Name the class using PascalCase convention
+
+## Evidence
+
+- Pattern in namingConventions.classes
+
+---
+id: pursr-instinct-constant-SCREAMING_SNAKE_CASE
+trigger: "When defining a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: 0xheycat/pursr
+---
+
+# Pursr Instinct Constant SCREAMING_SNAKE_CASE
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE convention
+
+## Evidence
+
+- Pattern in namingConventions.constants
+
+---
+id: pursr-instinct-import-relative
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: 0xheycat/pursr
+---
+
+# Pursr Instinct Import Relative
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle
+- Seen in examples/notion-github-workflow-mcp/src/server.js
+
+---
+id: pursr-instinct-export-named
+trigger: "When exporting functions or classes"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: 0xheycat/pursr
+---
+
+# Pursr Instinct Export Named
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle
+
+---
+id: pursr-instinct-try-catch-error-handling
+trigger: "When handling errors in code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: 0xheycat/pursr
+---
+
+# Pursr Instinct Try Catch Error Handling
+
+## Action
+
+Use try-catch blocks for error handling
+
+## Evidence
+
+- Pattern in errorHandling.style
+
+---
+id: pursr-instinct-commit-freeform-descriptive
+trigger: "When making a git commit"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: 0xheycat/pursr
+---
+
+# Pursr Instinct Commit Freeform Descriptive
+
+## Action
+
+Write a descriptive, freeform commit message without a required prefix
+
+## Evidence
+
+- Seen in commits: 'Add Notion GitHub workflow MCP scaffold', 'Fix Notion GitHub workflow MCP server base URL handling', 'Fix MCP gateway URL parsing'
+- Pattern in commits.prefixes (empty)
+
+---
+id: pursr-instinct-commit-short-message
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: 0xheycat/pursr
+---
+
+# Pursr Instinct Commit Short Message
+
+## Action
+
+Keep the commit message concise, around 40 characters
+
+## Evidence
+
+- Pattern in commits.averageLength
+
+---
+id: pursr-instinct-single-file-feature-fix
+trigger: "When someone needs to fix or adjust logic in the Notion GitHub workflow MCP server"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: 0xheycat/pursr
+---
+
+# Pursr Instinct Single File Feature Fix
+
+## Action
+
+Edit 'examples/notion-github-workflow-mcp/src/server.js' and commit the change with a descriptive message
+
+## Evidence
+
+- Workflow: single-file-feature-fix
+- Seen in commits: 'Fix Notion GitHub workflow MCP server base URL handling'
+
