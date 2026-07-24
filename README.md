@@ -712,6 +712,19 @@ MIT (c) 2026 - [0xheycat](https://github.com/0xheycat)
 
 ---
 
+## Contributing
+
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-FF2EA6.svg)](CONTRIBUTING.md)
+[![good first issues](https://img.shields.io/github/issues/0xheycat/pursr/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/0xheycat/pursr/labels/good%20first%20issue)
+
+Contributions are welcome and appreciated! 🐾
+
+- 📖 Read the [Contributing guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md).
+- 🌱 New here? Look for [`good first issue`](https://github.com/0xheycat/pursr/labels/good%20first%20issue).
+- 💬 Ideas & questions → [Discussions](https://github.com/0xheycat/pursr/discussions).
+
+---
+
 ## Keywords
 
 <sub>`pursr` · `visual-qa` · `visual-regression` · `screenshot-testing` · `browser-automation` · `playwright` · `mcp` · `model-context-protocol` · `mcp-server` · `accessibility` · `axe-core` · `wcag` · `cli` · `nodejs` · `ai-agents` · `coding-agents` · `claude` · `cursor` · `codex` · `pixel-diff` · `devtools`</sub>
