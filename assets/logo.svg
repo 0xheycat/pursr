@@ -1,29 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-label="pursr">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 140" role="img" aria-label="pursr">
   <defs>
-    <linearGradient id="pursr-mark-grad" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#FF2EA6"/>
-      <stop offset="1" stop-color="#FF5CC1"/>
+      <stop offset="1" stop-color="#FF7ACF"/>
     </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#181019"/>
+      <stop offset="1" stop-color="#0B0B0F"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FF2EA6" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#FF2EA6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.6"/>
+    </filter>
   </defs>
-  <!-- Mark: cursor arrowhead fused with camera aperture / lens iris -->
-  <g transform="translate(8,8)">
-    <!-- Outer iris ring -->
-    <circle cx="40" cy="40" r="34" fill="none" stroke="url(#pursr-mark-grad)" stroke-width="6"/>
-    <!-- Aperture blades (6) -->
-    <g fill="none" stroke="url(#pursr-mark-grad)" stroke-width="6" stroke-linecap="round">
-      <path d="M40 12 L52 30"/>
-      <path d="M64.4 25.6 L54.5 40"/>
-      <path d="M64.4 54.4 L48 48"/>
-      <path d="M40 68 L32 50"/>
-      <path d="M15.6 54.4 L26 47"/>
-      <path d="M15.6 25.6 L27 34"/>
+
+  <rect x="1" y="1" width="458" height="138" rx="32" fill="url(#tile)" stroke="#2A2130" stroke-width="1.5"/>
+
+  <!-- brand mark: glowing hexagonal aperture fused with a cursor chevron -->
+  <g transform="translate(80,70)">
+    <circle r="46" fill="url(#glow)"/>
+    <polygon points="44,0 22,38.1 -22,38.1 -44,0 -22,-38.1 22,-38.1" fill="none" stroke="url(#g)" stroke-width="3.5" stroke-linejoin="round" opacity="0.45"/>
+    <g stroke="url(#g)" stroke-width="7" stroke-linecap="round" filter="url(#soft)">
+      <path d="M0 -42 L14 -22" transform="rotate(0)"/>
+      <path d="M0 -42 L14 -22" transform="rotate(60)"/>
+      <path d="M0 -42 L14 -22" transform="rotate(120)"/>
+      <path d="M0 -42 L14 -22" transform="rotate(180)"/>
+      <path d="M0 -42 L14 -22" transform="rotate(240)"/>
+      <path d="M0 -42 L14 -22" transform="rotate(300)"/>
     </g>
-    <!-- Cursor chevron pointer on top of iris -->
-    <path d="M40 18 L52 50 L42 47 L36 58 L33 50 L40 18 Z" fill="url(#pursr-mark-grad)"/>
+    <path d="M0 -28 L15 10 L0 1 L-15 10 Z" fill="url(#g)"/>
   </g>
-  <!-- Wordmark: pursr -->
-  <g transform="translate(108,62)" font-family="-apple-system,BlinkMacSystemFont,Inter,Segoe UI,Roboto,sans-serif" font-weight="700" font-size="56" letter-spacing="-2">
-    <text fill="#0B0B0F" x="0" y="0">pursr</text>
-    <rect x="170" y="-12" width="10" height="10" fill="#FF2EA6"/>
-  </g>
+
+  <!-- wordmark -->
+  <text x="150" y="90" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif" font-weight="800" font-size="66" letter-spacing="-3" fill="#FFFFFF">pursr</text>
+  <rect x="300" y="74" width="13" height="13" rx="2" fill="#FF2EA6"/>
 </svg>
