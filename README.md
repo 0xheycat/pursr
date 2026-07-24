@@ -18,6 +18,7 @@
   <a href="https://www.npmjs.com/package/pursr"><img src="https://img.shields.io/npm/v/pursr.svg?style=for-the-badge&color=FF2EA6" alt="npm version"></a>
   <a href="https://github.com/0xheycat/pursr/blob/main/LICENSE"><img src="https://img.shields.io/github/license/0xheycat/pursr.svg?style=for-the-badge" alt="license"></a>
   <a href="https://github.com/0xheycat/pursr/stargazers"><img src="https://img.shields.io/github/stars/0xheycat/pursr.svg?style=for-the-badge&color=FF2EA6" alt="stars"></a>
+  <a href="https://0xheycat.xyz/work/pursr"><img src="https://img.shields.io/badge/project-0xheycat.xyz-FF2EA6?style=for-the-badge" alt="project page"></a>
   <a href="https://www.npmjs.com/package/pursr"><img src="https://img.shields.io/npm/dm/pursr.svg?style=for-the-badge" alt="npm downloads"></a>
   <a href="https://github.com/0xheycat/pursr/actions"><img src="https://img.shields.io/github/actions/workflow/status/0xheycat/pursr/ci.yml?style=for-the-badge" alt="CI"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/pursr.svg?style=for-the-badge" alt="node"></a>
