@@ -708,3 +708,9 @@ Each capture is clipped precisely to the elements bounding box (even when scroll
 ## License
 
 MIT (c) 2026 - [0xheycat](https://github.com/0xheycat)
+
+---
+
+## Keywords
+
+<sub>`pursr` · `visual-qa` · `visual-regression` · `screenshot-testing` · `browser-automation` · `playwright` · `mcp` · `model-context-protocol` · `mcp-server` · `accessibility` · `axe-core` · `wcag` · `cli` · `nodejs` · `ai-agents` · `coding-agents` · `claude` · `cursor` · `codex` · `pixel-diff` · `devtools`</sub>
