@@ -1,6 +1,6 @@
 // Persistent browser sessions for agent-driven visual QA.
 
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { connectOverCDP, launch, newPage } from "./runway.js";
 import { resolveViewport } from "./viewport.js";
