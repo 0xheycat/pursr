@@ -221,13 +221,13 @@ class PursrMCPServer {
       },
       {
         name: "pursr_screenshot",
-        description: "Capture the current persistent session and return the PNG directly to the model as image content. Selector capture first disables animations, then falls back to a bounded page clip when a dynamic element never reaches Playwright's stability condition.",
+        description: "Capture the current persistent session and return the PNG directly to the model as image content. Selector capture retains bounded CDP clip recovery, while viewport and full-page capture automatically retry through CDP when Playwright cannot finish the screenshot.",
         inputSchema: {
           type: "object",
           properties: {
             sessionId: { type: "string" }, out: { type: "string" }, full: { type: "boolean" },
             selector: { type: "string", description: "Capture only the first matching element" },
-            timeoutMs: { type: "number", minimum: 0, description: "Capture timeout used by locator and clip-fallback paths." },
+            timeoutMs: { type: "number", minimum: 0, description: "Playwright capture timeout before automatic CDP recovery." },
           },
           required: ["sessionId"],
         },

@@ -229,7 +229,7 @@ npx pursr-mcp --verbose
 | `pursr_sessions` | List active browser sessions |
 | `pursr_snapshot` | Visible rendered nodes, geometry, semantics, and computed styles |
 | `pursr_act` | Interact with per-action timeouts, caller-controlled force fallback, strict `eval.js`, cursor movement, and annotations |
-| `pursr_screenshot` | Return the current PNG directly to the vision model, with bounded selector and CDP clip fallback |
+| `pursr_screenshot` | Return the current PNG directly to the vision model, with selector, viewport, and full-page CDP recovery plus capture metadata |
 | `pursr_inspect` | Inspect exact geometry, computed styles, and stacking ancestors |
 | `pursr_diagnostics` | Read console, page errors, failed requests, and HTTP failures |
 | `pursr_session_close` | Close the tab and release its browser process |
@@ -249,7 +249,7 @@ Use persistent sessions for the same inspect-act-verify loop as an interactive b
 1. Call `pursr_session_open` once with a stable `sessionId`.
 2. Call `pursr_snapshot` to understand the rendered page before acting.
 3. Use `pursr_act` for a small, ordered interaction sequence.
-4. Call `pursr_screenshot` when visual judgment matters; the model receives the PNG directly.
+4. Call `pursr_screenshot` when visual judgment matters; the model receives the PNG directly. Read `captureMode` and `fallbackError` to distinguish normal Playwright capture from automatic CDP recovery.
 5. Use `pursr_inspect` for layout, clipping, typography, or stacking problems.
 6. Read `pursr_diagnostics`, then reload and verify after source changes.
 7. Call `pursr_session_close` when the review is complete.
@@ -549,6 +549,7 @@ src/
   index.js          - public library entry
   mcp.js            - official MCP SDK stdio server
   session.js        - persistent headless, visible, and CDP sessions
+  capture.js        - deep screenshot module with selector, viewport, and full-page recovery
   visual-operator.js - rendered cursor and interaction feedback
   shoot.js          - runShoot (overlays + camera + frame-stable)
   sweep.js          - runSweep (validated, parallel pool)

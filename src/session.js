@@ -1,11 +1,11 @@
 // Persistent browser sessions for agent-driven visual QA.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdirSync } from "node:fs";
 import { connectOverCDP, launch, newPage } from "./runway.js";
 import { resolveViewport } from "./viewport.js";
 import { gotoOrThrow, settle, CLICK_TIMEOUT_MS, WAIT_DEFAULT_TIMEOUT_MS } from "./overlays.js";
 import { resolveLocator } from "./selector.js";
+import { captureScreenshot } from "./capture.js";
 import {
   clearVisualAnnotations,
   highlightVisualTarget,
@@ -62,31 +62,6 @@ async function dispatchForcedPointerActionInPage(page, selector, op) {
     }));
   }, { selector, eventType, detail });
   return `dom-${eventType}`;
-}
-
-async function captureSelectorWithCdp(page, clip, file) {
-  const context = page.context?.();
-  if (!context?.newCDPSession) throw new Error("CDP screenshot fallback is unavailable");
-  const scroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
-  const session = await context.newCDPSession(page);
-  try {
-    const result = await session.send("Page.captureScreenshot", {
-      format: "png",
-      fromSurface: true,
-      captureBeyondViewport: true,
-      clip: {
-        x: Math.max(0, clip.x + Number(scroll?.x || 0)),
-        y: Math.max(0, clip.y + Number(scroll?.y || 0)),
-        width: clip.width,
-        height: clip.height,
-        scale: 1,
-      },
-    });
-    if (!result?.data) throw new Error("CDP screenshot returned no data");
-    writeFileSync(file, Buffer.from(result.data, "base64"));
-  } finally {
-    await session.detach?.().catch(() => {});
-  }
 }
 
 async function settleWithin(task, timeoutMs, label, warnings) {
@@ -368,45 +343,13 @@ export class BrowserSessionManager {
     return { sessionId, url: page.url(), title: await page.title(), trace, failed: trace.some((step) => !step.ok) };
   }
 
-  async screenshot(sessionId, { out, full = false, selector, timeoutMs } = {}) {
+  async screenshot(sessionId, options = {}) {
     const { page } = this.get(sessionId);
-    const timeout = normalizedTimeout(timeoutMs, CLICK_TIMEOUT_MS);
-    const file = out || join(this.outputDir, `pursr-${sessionId}-${Date.now()}.png`);
-    mkdirSync(dirname(file), { recursive: true });
-    let captureMode = full ? "full-page" : "viewport";
-    let fallbackError = null;
-    if (selector) {
-      const locator = await resolveLocator(page, selector);
-      const target = locator.first();
-      try {
-        await target.screenshot({ path: file, timeout, animations: "disabled" });
-        captureMode = "locator";
-      } catch (error) {
-        fallbackError = error?.message || String(error);
-        await target.waitFor({ state: "visible", timeout });
-        const clip = await target.boundingBox();
-        if (!clip || clip.width <= 0 || clip.height <= 0) throw error;
-        try {
-          await captureSelectorWithCdp(page, clip, file);
-          captureMode = "cdp-clip-fallback";
-        } catch (cdpError) {
-          await page.screenshot({ path: file, clip, timeout, animations: "disabled" });
-          captureMode = "clip-fallback";
-          fallbackError = `${fallbackError}; CDP fallback: ${cdpError?.message || String(cdpError)}`;
-        }
-      }
-    } else {
-      await page.screenshot({ path: file, fullPage: !!full, timeout, animations: "disabled" });
-    }
-    return {
+    return await captureScreenshot(page, {
+      ...options,
+      outputDir: this.outputDir,
       sessionId,
-      out: file,
-      url: page.url(),
-      data: readFileSync(file).toString("base64"),
-      mimeType: "image/png",
-      captureMode,
-      ...(fallbackError ? { fallbackError } : {}),
-    };
+    });
   }
 
   diagnostics(sessionId, { clear = false } = {}) {
