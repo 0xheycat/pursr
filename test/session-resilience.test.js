@@ -215,6 +215,122 @@ test("selector screenshot falls back to bounded CDP clipping when locator stabil
   }
 });
 
+test("viewport screenshot falls back to CDP when Playwright capture times out", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-viewport-fallback-"));
+  const file = join(outputDir, "viewport.png");
+  const calls = [];
+  const png = new PNG({ width: 3, height: 2 });
+  const pngBase64 = PNG.sync.write(png).toString("base64");
+  const cdp = {
+    send: async (method, params) => {
+      calls.push(["cdpSend", method, params]);
+      if (method !== "Page.captureScreenshot") throw new Error(`unexpected CDP method: ${method}`);
+      return { data: pngBase64 };
+    },
+    detach: async () => calls.push(["cdpDetach"]),
+  };
+  const context = {
+    close: async () => {},
+    newCDPSession: async () => {
+      calls.push(["newCDPSession"]);
+      return cdp;
+    },
+  };
+  const manager = new BrowserSessionManager({ outputDir });
+  const page = mockSession(manager, "viewport-fallback", {
+    context,
+    page: {
+      screenshot: async (options) => {
+        calls.push(["pageScreenshot", options]);
+        throw new Error("Timeout 250ms exceeded while waiting for fonts to load");
+      },
+    },
+  });
+  page.context = () => context;
+
+  try {
+    const result = await manager.screenshot("viewport-fallback", {
+      out: file,
+      timeoutMs: 250,
+    });
+
+    assert.equal(result.captureMode, "cdp-viewport-fallback");
+    assert.match(result.fallbackError, /waiting for fonts to load/i);
+    const decoded = PNG.sync.read(readFileSync(file));
+    assert.deepEqual({ width: decoded.width, height: decoded.height }, { width: 3, height: 2 });
+    assert.deepEqual(calls[0], [
+      "pageScreenshot",
+      { path: file, fullPage: false, timeout: 250, animations: "disabled" },
+    ]);
+    const capture = calls.find((call) => call[0] === "cdpSend" && call[1] === "Page.captureScreenshot");
+    assert.ok(capture, "viewport fallback should invoke Page.captureScreenshot");
+    assert.equal(capture[2].captureBeyondViewport, false);
+    assert.deepEqual(calls.at(-1), ["cdpDetach"]);
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("full-page screenshot falls back to CDP when Playwright capture times out", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-full-page-fallback-"));
+  const file = join(outputDir, "full-page.png");
+  const calls = [];
+  const png = new PNG({ width: 4, height: 6 });
+  const pngBase64 = PNG.sync.write(png).toString("base64");
+  const cdp = {
+    send: async (method, params) => {
+      calls.push(["cdpSend", method, params]);
+      if (method === "Page.getLayoutMetrics") {
+        return { cssContentSize: { x: 0, y: 0, width: 1440, height: 3200 } };
+      }
+      if (method === "Page.captureScreenshot") return { data: pngBase64 };
+      throw new Error(`unexpected CDP method: ${method}`);
+    },
+    detach: async () => calls.push(["cdpDetach"]),
+  };
+  const context = {
+    close: async () => {},
+    newCDPSession: async () => {
+      calls.push(["newCDPSession"]);
+      return cdp;
+    },
+  };
+  const manager = new BrowserSessionManager({ outputDir });
+  const page = mockSession(manager, "full-page-fallback", {
+    context,
+    page: {
+      screenshot: async (options) => {
+        calls.push(["pageScreenshot", options]);
+        throw new Error("Timeout 250ms exceeded while waiting for fonts to load");
+      },
+    },
+  });
+  page.context = () => context;
+
+  try {
+    const result = await manager.screenshot("full-page-fallback", {
+      out: file,
+      full: true,
+      timeoutMs: 250,
+    });
+
+    assert.equal(result.captureMode, "cdp-full-page-fallback");
+    assert.match(result.fallbackError, /waiting for fonts to load/i);
+    const decoded = PNG.sync.read(readFileSync(file));
+    assert.deepEqual({ width: decoded.width, height: decoded.height }, { width: 4, height: 6 });
+    assert.deepEqual(calls[0], [
+      "pageScreenshot",
+      { path: file, fullPage: true, timeout: 250, animations: "disabled" },
+    ]);
+    const capture = calls.find((call) => call[0] === "cdpSend" && call[1] === "Page.captureScreenshot");
+    assert.ok(capture, "full-page fallback should invoke Page.captureScreenshot");
+    assert.equal(capture[2].captureBeyondViewport, true);
+    assert.deepEqual(calls.at(-1), ["cdpDetach"]);
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
 test("close is bounded and removes a session even when a browser context never resolves", async () => {
   const manager = new BrowserSessionManager({ closeTimeoutMs: 25 });
   mockSession(manager, "stuck-close", {
