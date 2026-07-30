@@ -53,6 +53,7 @@ test("official MCP SDK client completes a persistent visual workflow", { timeout
     command: process.execPath,
     args: [process.env.PURSR_MCP_BIN ? resolve(process.env.PURSR_MCP_BIN) : resolve("bin/pursr-mcp.mjs")],
     cwd: process.cwd(),
+    env: { ...process.env },
     stderr: "pipe",
   });
   client = new Client({ name: "pursr-sdk-test", version: "1.0.0" }, { capabilities: {} });

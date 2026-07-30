@@ -188,24 +188,46 @@ class PursrMCPServer {
       },
       {
         name: "pursr_act",
-        description: "Perform ordered actions in a persistent session. Supports selector or coordinate click/doubleClick, drag, hover, fill, type, check, select, press, keyDown, keyUp, scroll, wait, sleep, navigate, reload, eval, move, annotate, and clearAnnotations.",
+        description: "Perform ordered actions in a persistent session. Supports selector or coordinate click/doubleClick, drag, hover, fill, type, check, select, press, keyDown, keyUp, scroll, wait, sleep, navigate, reload, eval, move, annotate, and clearAnnotations. Selector actions honor timeoutMs and accept force=true only when the caller explicitly requests Playwright's actionability bypass.",
         inputSchema: {
           type: "object",
           properties: {
             sessionId: { type: "string" },
-            actions: { type: "array", minItems: 1, maxItems: 50, items: { type: "object" } },
+            actions: {
+              type: "array",
+              minItems: 1,
+              maxItems: 50,
+              items: {
+                type: "object",
+                properties: {
+                  type: { type: "string", description: "Action type." },
+                  op: { type: "string", description: "Alias for type." },
+                  selector: { type: "string", description: "CSS, text, role, label, placeholder, test-id, or xpath selector supported by Pursr." },
+                  timeoutMs: { type: "number", minimum: 0, description: "Per-action timeout forwarded to Playwright." },
+                  force: { type: "boolean", description: "Explicitly bypass Playwright actionability checks for selector actions. Never enabled automatically." },
+                  text: { type: "string" },
+                  value: {},
+                  checked: { type: "boolean" },
+                  js: { type: "string", description: "Required non-empty JavaScript for eval actions." },
+                  x: { type: "number" }, y: { type: "number" },
+                  settleMs: { type: "number", minimum: 0 },
+                },
+                additionalProperties: true,
+              },
+            },
           },
           required: ["sessionId", "actions"],
         },
       },
       {
         name: "pursr_screenshot",
-        description: "Capture the current persistent session and return the PNG directly to the model as image content.",
+        description: "Capture the current persistent session and return the PNG directly to the model as image content. Selector capture first disables animations, then falls back to a bounded page clip when a dynamic element never reaches Playwright's stability condition.",
         inputSchema: {
           type: "object",
           properties: {
             sessionId: { type: "string" }, out: { type: "string" }, full: { type: "boolean" },
             selector: { type: "string", description: "Capture only the first matching element" },
+            timeoutMs: { type: "number", minimum: 0, description: "Capture timeout used by locator and clip-fallback paths." },
           },
           required: ["sessionId"],
         },

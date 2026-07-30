@@ -17,6 +17,30 @@ import {
 
 const MAX_DIAGNOSTICS = 250;
 const MAX_ACTIONS = 50;
+const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
+
+function normalizedTimeout(value, fallback) {
+  const timeout = Number(value);
+  return Number.isFinite(timeout) && timeout >= 0 ? timeout : fallback;
+}
+
+async function settleWithin(task, timeoutMs, label, warnings) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(task),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+  } catch (error) {
+    warnings.push(error?.message || String(error));
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function cleanId(value) {
   const id = String(value || "").trim();
@@ -45,10 +69,16 @@ function attachDiagnostics(page, diagnostics) {
 }
 
 export class BrowserSessionManager {
-  constructor({ launchBrowser = launch, connectBrowser = connectOverCDP, outputDir = process.cwd() } = {}) {
+  constructor({
+    launchBrowser = launch,
+    connectBrowser = connectOverCDP,
+    outputDir = process.cwd(),
+    closeTimeoutMs = DEFAULT_CLOSE_TIMEOUT_MS,
+  } = {}) {
     this.launchBrowser = launchBrowser;
     this.connectBrowser = connectBrowser;
     this.outputDir = outputDir;
+    this.closeTimeoutMs = normalizedTimeout(closeTimeoutMs, DEFAULT_CLOSE_TIMEOUT_MS);
     this.sessions = new Map();
   }
 
@@ -167,7 +197,9 @@ export class BrowserSessionManager {
       try {
         if (["click", "doubleClick", "hover", "fill", "type", "check", "select"].includes(op) && action.selector) {
           const locator = await resolveLocator(page, action.selector);
-          await locator.first().waitFor({ state: "visible", timeout: action.timeoutMs || CLICK_TIMEOUT_MS });
+          const timeout = normalizedTimeout(action.timeoutMs, CLICK_TIMEOUT_MS);
+          const force = action.force === true;
+          await locator.first().waitFor({ state: force ? "attached" : "visible", timeout });
           let point = null;
           if (visual) {
             point = await visualPointForLocator(locator.first());
@@ -175,13 +207,14 @@ export class BrowserSessionManager {
             await highlightVisualTarget(page, point.rect, { ...operatorOptions, color: action.color, label: action.label || `${op}: ${action.selector}` });
             step.cursor = { x: Math.round(point.x), y: Math.round(point.y) };
           }
-          if (op === "click") await locator.first().click();
-          else if (op === "doubleClick") await locator.first().dblclick();
-          else if (op === "hover") await locator.first().hover();
-          else if (op === "fill") await locator.first().fill(String(action.text ?? action.value ?? ""));
-          else if (op === "type") await locator.first().pressSequentially(String(action.text ?? ""), { delay: action.delayMs || 10 });
-          else if (op === "check") await locator.first().setChecked(action.checked !== false);
-          else await locator.first().selectOption(action.value);
+          const actionOptions = { timeout, ...(force ? { force: true } : {}) };
+          if (op === "click") await locator.first().click(actionOptions);
+          else if (op === "doubleClick") await locator.first().dblclick(actionOptions);
+          else if (op === "hover") await locator.first().hover(actionOptions);
+          else if (op === "fill") await locator.first().fill(String(action.text ?? action.value ?? ""), actionOptions);
+          else if (op === "type") await locator.first().pressSequentially(String(action.text ?? ""), { delay: action.delayMs || 10, timeout });
+          else if (op === "check") await locator.first().setChecked(action.checked !== false, actionOptions);
+          else await locator.first().selectOption(action.value, actionOptions);
           if (visual && ["click", "doubleClick"].includes(op) && point) await markVisualClick(page, point.x, point.y, { ...operatorOptions, color: action.color });
           step.selector = action.selector;
         } else if (["click", "doubleClick"].includes(op) && Number.isFinite(Number(action.x)) && Number.isFinite(Number(action.y))) {
@@ -249,15 +282,39 @@ export class BrowserSessionManager {
     return { sessionId, url: page.url(), title: await page.title(), trace, failed: trace.some((step) => !step.ok) };
   }
 
-  async screenshot(sessionId, { out, full = false, selector } = {}) {
+  async screenshot(sessionId, { out, full = false, selector, timeoutMs } = {}) {
     const { page } = this.get(sessionId);
+    const timeout = normalizedTimeout(timeoutMs, CLICK_TIMEOUT_MS);
     const file = out || join(this.outputDir, `pursr-${sessionId}-${Date.now()}.png`);
     mkdirSync(dirname(file), { recursive: true });
+    let captureMode = full ? "full-page" : "viewport";
+    let fallbackError = null;
     if (selector) {
       const locator = await resolveLocator(page, selector);
-      await locator.first().screenshot({ path: file });
-    } else await page.screenshot({ path: file, fullPage: !!full });
-    return { sessionId, out: file, url: page.url(), data: readFileSync(file).toString("base64"), mimeType: "image/png" };
+      const target = locator.first();
+      try {
+        await target.screenshot({ path: file, timeout, animations: "disabled" });
+        captureMode = "locator";
+      } catch (error) {
+        fallbackError = error?.message || String(error);
+        await target.waitFor({ state: "visible", timeout });
+        const clip = await target.boundingBox();
+        if (!clip || clip.width <= 0 || clip.height <= 0) throw error;
+        await page.screenshot({ path: file, clip, timeout, animations: "disabled" });
+        captureMode = "clip-fallback";
+      }
+    } else {
+      await page.screenshot({ path: file, fullPage: !!full, timeout, animations: "disabled" });
+    }
+    return {
+      sessionId,
+      out: file,
+      url: page.url(),
+      data: readFileSync(file).toString("base64"),
+      mimeType: "image/png",
+      captureMode,
+      ...(fallbackError ? { fallbackError } : {}),
+    };
   }
 
   diagnostics(sessionId, { clear = false } = {}) {
@@ -277,16 +334,18 @@ export class BrowserSessionManager {
     const session = this.sessions.get(id);
     if (!session) return { sessionId: id, closed: false };
     this.sessions.delete(id);
+    const warnings = [];
     let video = null;
-    try {
-      if (session.mode === "cdp") await session.page.close();
-      else await session.context.close();
-    } catch {}
-    try { await session.browser.close(); } catch {}
-    if (session.video) {
-      try { video = await session.video.path(); } catch {}
+    if (session.mode === "cdp") {
+      await settleWithin(() => session.page.close(), this.closeTimeoutMs, "page close", warnings);
+    } else {
+      await settleWithin(() => session.context.close(), this.closeTimeoutMs, "context close", warnings);
     }
-    return { sessionId: id, closed: true, video };
+    await settleWithin(() => session.browser.close(), this.closeTimeoutMs, "browser close", warnings);
+    if (session.video) {
+      video = await settleWithin(() => session.video.path(), this.closeTimeoutMs, "video path", warnings);
+    }
+    return { sessionId: id, closed: true, video, warnings };
   }
 
   async closeAll() {
