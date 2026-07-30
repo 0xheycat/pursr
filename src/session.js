@@ -24,7 +24,7 @@ function normalizedTimeout(value, fallback) {
   return Number.isFinite(timeout) && timeout >= 0 ? timeout : fallback;
 }
 
-async function dispatchForcedPointerAction(locator, op) {
+async function dispatchForcedPointerAction(locator, op, timeout) {
   const eventType = op === "doubleClick" ? "dblclick" : "click";
   await locator.dispatchEvent(eventType, {
     bubbles: true,
@@ -32,7 +32,7 @@ async function dispatchForcedPointerAction(locator, op) {
     composed: true,
     detail: op === "doubleClick" ? 2 : 1,
     button: 0,
-  });
+  }, { timeout });
   return `dom-${eventType}`;
 }
 
@@ -234,25 +234,35 @@ export class BrowserSessionManager {
       try {
         if (["click", "doubleClick", "hover", "fill", "type", "check", "select"].includes(op) && action.selector) {
           const locator = await resolveLocator(page, action.selector);
+          const target = locator.first();
           const timeout = normalizedTimeout(action.timeoutMs, CLICK_TIMEOUT_MS);
           const force = action.force === true;
-          await locator.first().waitFor({ state: force ? "attached" : "visible", timeout });
+          let waitError = null;
+          try {
+            await target.waitFor({ state: force ? "attached" : "visible", timeout });
+          } catch (error) {
+            if (!force) throw error;
+            waitError = error;
+          }
           let point = null;
-          if (visual) {
-            point = await visualPointForLocator(locator.first());
+          if (visual && !waitError) {
+            point = await visualPointForLocator(target);
             await moveVisualCursor(page, point.x, point.y, { ...operatorOptions, durationMs: action.durationMs });
             await highlightVisualTarget(page, point.rect, { ...operatorOptions, color: action.color, label: action.label || `${op}: ${action.selector}` });
             step.cursor = { x: Math.round(point.x), y: Math.round(point.y) };
           }
           const actionOptions = { timeout, ...(force ? { force: true } : {}) };
           if (op === "click" || op === "doubleClick") {
-            try {
-              await locator.first()[op === "doubleClick" ? "dblclick" : "click"](actionOptions);
+            if (waitError) {
+              step.playwrightError = waitError?.message || String(waitError);
+              step.actionMode = await dispatchForcedPointerAction(target, op, timeout);
+            } else try {
+              await target[op === "doubleClick" ? "dblclick" : "click"](actionOptions);
               step.actionMode = "playwright";
             } catch (error) {
               if (!force) throw error;
               step.playwrightError = error?.message || String(error);
-              step.actionMode = await dispatchForcedPointerAction(locator.first(), op);
+              step.actionMode = await dispatchForcedPointerAction(target, op, timeout);
             }
           }
           else if (op === "hover") await locator.first().hover(actionOptions);
