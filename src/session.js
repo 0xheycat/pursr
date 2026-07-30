@@ -1,6 +1,6 @@
 // Persistent browser sessions for agent-driven visual QA.
 
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { connectOverCDP, launch, newPage } from "./runway.js";
 import { resolveViewport } from "./viewport.js";
@@ -17,6 +17,95 @@ import {
 
 const MAX_DIAGNOSTICS = 250;
 const MAX_ACTIONS = 50;
+const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
+
+function normalizedTimeout(value, fallback) {
+  const timeout = Number(value);
+  return Number.isFinite(timeout) && timeout >= 0 ? timeout : fallback;
+}
+
+function forcedPointerEvent(op) {
+  return {
+    eventType: op === "doubleClick" ? "dblclick" : "click",
+    detail: op === "doubleClick" ? 2 : 1,
+  };
+}
+
+async function dispatchForcedPointerAction(locator, op, timeout) {
+  const { eventType, detail } = forcedPointerEvent(op);
+  await locator.dispatchEvent(eventType, {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    detail,
+    button: 0,
+  }, { timeout });
+  return `dom-${eventType}`;
+}
+
+async function dispatchForcedPointerActionInPage(page, selector, op) {
+  const { eventType, detail } = forcedPointerEvent(op);
+  await page.evaluate(({ selector: cssSelector, eventType: type, detail: clickCount }) => {
+    let element;
+    try {
+      element = document.querySelector(cssSelector);
+    } catch {
+      throw new Error(`forced DOM dispatch requires a CSS selector: ${cssSelector}`);
+    }
+    if (!element) throw new Error(`forced DOM dispatch selector not found: ${cssSelector}`);
+    element.dispatchEvent(new MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      detail: clickCount,
+      button: 0,
+    }));
+  }, { selector, eventType, detail });
+  return `dom-${eventType}`;
+}
+
+async function captureSelectorWithCdp(page, clip, file) {
+  const context = page.context?.();
+  if (!context?.newCDPSession) throw new Error("CDP screenshot fallback is unavailable");
+  const scroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
+  const session = await context.newCDPSession(page);
+  try {
+    const result = await session.send("Page.captureScreenshot", {
+      format: "png",
+      fromSurface: true,
+      captureBeyondViewport: true,
+      clip: {
+        x: Math.max(0, clip.x + Number(scroll?.x || 0)),
+        y: Math.max(0, clip.y + Number(scroll?.y || 0)),
+        width: clip.width,
+        height: clip.height,
+        scale: 1,
+      },
+    });
+    if (!result?.data) throw new Error("CDP screenshot returned no data");
+    writeFileSync(file, Buffer.from(result.data, "base64"));
+  } finally {
+    await session.detach?.().catch(() => {});
+  }
+}
+
+async function settleWithin(task, timeoutMs, label, warnings) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(task),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+  } catch (error) {
+    warnings.push(error?.message || String(error));
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function cleanId(value) {
   const id = String(value || "").trim();
@@ -45,10 +134,16 @@ function attachDiagnostics(page, diagnostics) {
 }
 
 export class BrowserSessionManager {
-  constructor({ launchBrowser = launch, connectBrowser = connectOverCDP, outputDir = process.cwd() } = {}) {
+  constructor({
+    launchBrowser = launch,
+    connectBrowser = connectOverCDP,
+    outputDir = process.cwd(),
+    closeTimeoutMs = DEFAULT_CLOSE_TIMEOUT_MS,
+  } = {}) {
     this.launchBrowser = launchBrowser;
     this.connectBrowser = connectBrowser;
     this.outputDir = outputDir;
+    this.closeTimeoutMs = normalizedTimeout(closeTimeoutMs, DEFAULT_CLOSE_TIMEOUT_MS);
     this.sessions = new Map();
   }
 
@@ -167,21 +262,42 @@ export class BrowserSessionManager {
       try {
         if (["click", "doubleClick", "hover", "fill", "type", "check", "select"].includes(op) && action.selector) {
           const locator = await resolveLocator(page, action.selector);
-          await locator.first().waitFor({ state: "visible", timeout: action.timeoutMs || CLICK_TIMEOUT_MS });
+          const target = locator.first();
+          const timeout = normalizedTimeout(action.timeoutMs, CLICK_TIMEOUT_MS);
+          const force = action.force === true;
+          let waitError = null;
+          try {
+            await target.waitFor({ state: force ? "attached" : "visible", timeout });
+          } catch (error) {
+            if (!force) throw error;
+            waitError = error;
+          }
           let point = null;
-          if (visual) {
-            point = await visualPointForLocator(locator.first());
+          if (visual && !waitError) {
+            point = await visualPointForLocator(target);
             await moveVisualCursor(page, point.x, point.y, { ...operatorOptions, durationMs: action.durationMs });
             await highlightVisualTarget(page, point.rect, { ...operatorOptions, color: action.color, label: action.label || `${op}: ${action.selector}` });
             step.cursor = { x: Math.round(point.x), y: Math.round(point.y) };
           }
-          if (op === "click") await locator.first().click();
-          else if (op === "doubleClick") await locator.first().dblclick();
-          else if (op === "hover") await locator.first().hover();
-          else if (op === "fill") await locator.first().fill(String(action.text ?? action.value ?? ""));
-          else if (op === "type") await locator.first().pressSequentially(String(action.text ?? ""), { delay: action.delayMs || 10 });
-          else if (op === "check") await locator.first().setChecked(action.checked !== false);
-          else await locator.first().selectOption(action.value);
+          const actionOptions = { timeout, ...(force ? { force: true } : {}) };
+          if (op === "click" || op === "doubleClick") {
+            if (waitError) {
+              step.playwrightError = waitError?.message || String(waitError);
+              step.actionMode = await dispatchForcedPointerActionInPage(page, action.selector, op);
+            } else try {
+              await target[op === "doubleClick" ? "dblclick" : "click"](actionOptions);
+              step.actionMode = "playwright";
+            } catch (error) {
+              if (!force) throw error;
+              step.playwrightError = error?.message || String(error);
+              step.actionMode = await dispatchForcedPointerAction(target, op, timeout);
+            }
+          }
+          else if (op === "hover") await locator.first().hover(actionOptions);
+          else if (op === "fill") await locator.first().fill(String(action.text ?? action.value ?? ""), actionOptions);
+          else if (op === "type") await locator.first().pressSequentially(String(action.text ?? ""), { delay: action.delayMs || 10, timeout });
+          else if (op === "check") await locator.first().setChecked(action.checked !== false, actionOptions);
+          else await locator.first().selectOption(action.value, actionOptions);
           if (visual && ["click", "doubleClick"].includes(op) && point) await markVisualClick(page, point.x, point.y, { ...operatorOptions, color: action.color });
           step.selector = action.selector;
         } else if (["click", "doubleClick"].includes(op) && Number.isFinite(Number(action.x)) && Number.isFinite(Number(action.y))) {
@@ -236,9 +352,12 @@ export class BrowserSessionManager {
         } else if (op === "clearAnnotations") {
           if (!visual) throw new Error("clearAnnotations requires a visual session");
           await clearVisualAnnotations(page, { keepCursor: action.keepCursor !== false });
-        }
-        else if (op === "eval") step.result = await page.evaluate(String(action.js || ""));
-        else throw new Error(`unknown action type: ${op}`);
+        } else if (op === "eval") {
+          if (typeof action.js !== "string" || !action.js.trim()) {
+            throw new Error("eval requires non-empty js");
+          }
+          step.result = await page.evaluate(action.js);
+        } else throw new Error(`unknown action type: ${op}`);
         if (action.settleMs) await page.waitForTimeout(Number(action.settleMs));
         step.ok = true;
       } catch (error) {
@@ -249,15 +368,45 @@ export class BrowserSessionManager {
     return { sessionId, url: page.url(), title: await page.title(), trace, failed: trace.some((step) => !step.ok) };
   }
 
-  async screenshot(sessionId, { out, full = false, selector } = {}) {
+  async screenshot(sessionId, { out, full = false, selector, timeoutMs } = {}) {
     const { page } = this.get(sessionId);
+    const timeout = normalizedTimeout(timeoutMs, CLICK_TIMEOUT_MS);
     const file = out || join(this.outputDir, `pursr-${sessionId}-${Date.now()}.png`);
     mkdirSync(dirname(file), { recursive: true });
+    let captureMode = full ? "full-page" : "viewport";
+    let fallbackError = null;
     if (selector) {
       const locator = await resolveLocator(page, selector);
-      await locator.first().screenshot({ path: file });
-    } else await page.screenshot({ path: file, fullPage: !!full });
-    return { sessionId, out: file, url: page.url(), data: readFileSync(file).toString("base64"), mimeType: "image/png" };
+      const target = locator.first();
+      try {
+        await target.screenshot({ path: file, timeout, animations: "disabled" });
+        captureMode = "locator";
+      } catch (error) {
+        fallbackError = error?.message || String(error);
+        await target.waitFor({ state: "visible", timeout });
+        const clip = await target.boundingBox();
+        if (!clip || clip.width <= 0 || clip.height <= 0) throw error;
+        try {
+          await captureSelectorWithCdp(page, clip, file);
+          captureMode = "cdp-clip-fallback";
+        } catch (cdpError) {
+          await page.screenshot({ path: file, clip, timeout, animations: "disabled" });
+          captureMode = "clip-fallback";
+          fallbackError = `${fallbackError}; CDP fallback: ${cdpError?.message || String(cdpError)}`;
+        }
+      }
+    } else {
+      await page.screenshot({ path: file, fullPage: !!full, timeout, animations: "disabled" });
+    }
+    return {
+      sessionId,
+      out: file,
+      url: page.url(),
+      data: readFileSync(file).toString("base64"),
+      mimeType: "image/png",
+      captureMode,
+      ...(fallbackError ? { fallbackError } : {}),
+    };
   }
 
   diagnostics(sessionId, { clear = false } = {}) {
@@ -277,16 +426,18 @@ export class BrowserSessionManager {
     const session = this.sessions.get(id);
     if (!session) return { sessionId: id, closed: false };
     this.sessions.delete(id);
+    const warnings = [];
     let video = null;
-    try {
-      if (session.mode === "cdp") await session.page.close();
-      else await session.context.close();
-    } catch {}
-    try { await session.browser.close(); } catch {}
-    if (session.video) {
-      try { video = await session.video.path(); } catch {}
+    if (session.mode === "cdp") {
+      await settleWithin(() => session.page.close(), this.closeTimeoutMs, "page close", warnings);
+    } else {
+      await settleWithin(() => session.context.close(), this.closeTimeoutMs, "context close", warnings);
     }
-    return { sessionId: id, closed: true, video };
+    await settleWithin(() => session.browser.close(), this.closeTimeoutMs, "browser close", warnings);
+    if (session.video) {
+      video = await settleWithin(() => session.video.path(), this.closeTimeoutMs, "video path", warnings);
+    }
+    return { sessionId: id, closed: true, video, warnings };
   }
 
   async closeAll() {
