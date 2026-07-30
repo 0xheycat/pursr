@@ -24,6 +24,43 @@ function normalizedTimeout(value, fallback) {
   return Number.isFinite(timeout) && timeout >= 0 ? timeout : fallback;
 }
 
+async function dispatchForcedPointerAction(locator, op) {
+  const eventType = op === "doubleClick" ? "dblclick" : "click";
+  await locator.dispatchEvent(eventType, {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    detail: op === "doubleClick" ? 2 : 1,
+    button: 0,
+  });
+  return `dom-${eventType}`;
+}
+
+async function captureSelectorWithCdp(page, clip, file) {
+  const context = page.context?.();
+  if (!context?.newCDPSession) throw new Error("CDP screenshot fallback is unavailable");
+  const scroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
+  const session = await context.newCDPSession(page);
+  try {
+    const result = await session.send("Page.captureScreenshot", {
+      format: "png",
+      fromSurface: true,
+      captureBeyondViewport: true,
+      clip: {
+        x: Math.max(0, clip.x + Number(scroll?.x || 0)),
+        y: Math.max(0, clip.y + Number(scroll?.y || 0)),
+        width: clip.width,
+        height: clip.height,
+        scale: 1,
+      },
+    });
+    if (!result?.data) throw new Error("CDP screenshot returned no data");
+    writeFileSync(file, Buffer.from(result.data, "base64"));
+  } finally {
+    await session.detach?.().catch(() => {});
+  }
+}
+
 async function settleWithin(task, timeoutMs, label, warnings) {
   let timer;
   try {
@@ -208,8 +245,16 @@ export class BrowserSessionManager {
             step.cursor = { x: Math.round(point.x), y: Math.round(point.y) };
           }
           const actionOptions = { timeout, ...(force ? { force: true } : {}) };
-          if (op === "click") await locator.first().click(actionOptions);
-          else if (op === "doubleClick") await locator.first().dblclick(actionOptions);
+          if (op === "click" || op === "doubleClick") {
+            try {
+              await locator.first()[op === "doubleClick" ? "dblclick" : "click"](actionOptions);
+              step.actionMode = "playwright";
+            } catch (error) {
+              if (!force) throw error;
+              step.playwrightError = error?.message || String(error);
+              step.actionMode = await dispatchForcedPointerAction(locator.first(), op);
+            }
+          }
           else if (op === "hover") await locator.first().hover(actionOptions);
           else if (op === "fill") await locator.first().fill(String(action.text ?? action.value ?? ""), actionOptions);
           else if (op === "type") await locator.first().pressSequentially(String(action.text ?? ""), { delay: action.delayMs || 10, timeout });
@@ -300,8 +345,14 @@ export class BrowserSessionManager {
         await target.waitFor({ state: "visible", timeout });
         const clip = await target.boundingBox();
         if (!clip || clip.width <= 0 || clip.height <= 0) throw error;
-        await page.screenshot({ path: file, clip, timeout, animations: "disabled" });
-        captureMode = "clip-fallback";
+        try {
+          await captureSelectorWithCdp(page, clip, file);
+          captureMode = "cdp-clip-fallback";
+        } catch (cdpError) {
+          await page.screenshot({ path: file, clip, timeout, animations: "disabled" });
+          captureMode = "clip-fallback";
+          fallbackError = `${fallbackError}; CDP fallback: ${cdpError?.message || String(cdpError)}`;
+        }
       }
     } else {
       await page.screenshot({ path: file, fullPage: !!full, timeout, animations: "disabled" });
