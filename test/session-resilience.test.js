@@ -67,7 +67,46 @@ test("selector actions forward explicit timeout and force instead of using hidde
   ]);
 });
 
-test("selector screenshot falls back to a bounded page clip when locator stability never settles", async () => {
+test("explicit force falls back to DOM dispatch when Playwright cannot settle a visible selector", async () => {
+  const calls = [];
+  const locator = {
+    first() { return this; },
+    waitFor: async (options) => calls.push(["waitFor", options]),
+    click: async (options) => {
+      calls.push(["click", options]);
+      throw new Error("Timeout while waiting for element to be stable");
+    },
+    dispatchEvent: async (type, init) => calls.push(["dispatchEvent", type, init]),
+  };
+  const manager = new BrowserSessionManager();
+  mockSession(manager, "forced-dispatch", {
+    page: { locator: () => locator },
+  });
+
+  const result = await manager.act("forced-dispatch", [{
+    type: "click",
+    selector: "#btn-guide",
+    timeoutMs: 250,
+    force: true,
+  }]);
+
+  assert.equal(result.failed, false);
+  assert.equal(result.trace[0].actionMode, "dom-click");
+  assert.match(result.trace[0].playwrightError, /element to be stable/i);
+  assert.deepEqual(calls, [
+    ["waitFor", { state: "attached", timeout: 250 }],
+    ["click", { timeout: 250, force: true }],
+    ["dispatchEvent", "click", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      detail: 1,
+      button: 0,
+    }],
+  ]);
+});
+
+test("selector screenshot falls back to bounded CDP clipping when locator stability never settles", async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "pursr-selector-fallback-"));
   const file = join(outputDir, "modal.png");
   const calls = [];
@@ -80,17 +119,32 @@ test("selector screenshot falls back to a bounded page clip when locator stabili
     waitFor: async (options) => calls.push(["waitFor", options]),
     boundingBox: async () => ({ x: 20, y: 30, width: 320, height: 180 }),
   };
+  const png = new PNG({ width: 2, height: 2 });
+  const pngBase64 = PNG.sync.write(png).toString("base64");
+  const cdp = {
+    send: async (method, params) => {
+      calls.push(["cdpSend", method, params]);
+      return { data: pngBase64 };
+    },
+    detach: async () => calls.push(["cdpDetach"]),
+  };
+  const context = {
+    close: async () => {},
+    newCDPSession: async () => {
+      calls.push(["newCDPSession"]);
+      return cdp;
+    },
+  };
   const manager = new BrowserSessionManager({ outputDir });
-  mockSession(manager, "selector-fallback", {
+  const page = mockSession(manager, "selector-fallback", {
+    context,
     page: {
       locator: () => locator,
-      screenshot: async (options) => {
-        calls.push(["pageScreenshot", options]);
-        const png = new PNG({ width: 2, height: 2 });
-        writeFileSync(options.path, PNG.sync.write(png));
-      },
+      evaluate: async () => ({ x: 5, y: 7 }),
+      screenshot: async (options) => calls.push(["pageScreenshot", options]),
     },
   });
+  page.context = () => context;
 
   try {
     const result = await manager.screenshot("selector-fallback", {
@@ -99,17 +153,19 @@ test("selector screenshot falls back to a bounded page clip when locator stabili
       timeoutMs: 250,
     });
 
-    assert.equal(result.captureMode, "clip-fallback");
+    assert.equal(result.captureMode, "cdp-clip-fallback");
     assert.match(result.fallbackError, /waiting for element to be stable/i);
     assert.deepEqual(calls, [
       ["locatorScreenshot", { path: file, timeout: 250, animations: "disabled" }],
       ["waitFor", { state: "visible", timeout: 250 }],
-      ["pageScreenshot", {
-        path: file,
-        clip: { x: 20, y: 30, width: 320, height: 180 },
-        timeout: 250,
-        animations: "disabled",
+      ["newCDPSession"],
+      ["cdpSend", "Page.captureScreenshot", {
+        format: "png",
+        fromSurface: true,
+        captureBeyondViewport: true,
+        clip: { x: 25, y: 37, width: 320, height: 180, scale: 1 },
       }],
+      ["cdpDetach"],
     ]);
     assert.ok(readFileSync(file).length > 0);
   } finally {
