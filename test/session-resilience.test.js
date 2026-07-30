@@ -106,7 +106,7 @@ test("explicit force falls back to DOM dispatch when Playwright cannot settle a 
   ]);
 });
 
-test("explicit force dispatches through the DOM when the locator attached wait itself times out", async () => {
+test("explicit force uses page DOM dispatch when the locator attached wait itself times out", async () => {
   const calls = [];
   const locator = {
     first() { return this; },
@@ -115,11 +115,17 @@ test("explicit force dispatches through the DOM when the locator attached wait i
       throw new Error("Timeout while waiting for locator to attach");
     },
     click: async (options) => calls.push(["click", options]),
-    dispatchEvent: async (type, init, options) => calls.push(["dispatchEvent", type, init, options]),
+    dispatchEvent: async (...args) => {
+      calls.push(["dispatchEvent", ...args]);
+      throw new Error("locator dispatch should not be retried after attached wait timeout");
+    },
   };
   const manager = new BrowserSessionManager();
   mockSession(manager, "forced-wait-dispatch", {
-    page: { locator: () => locator },
+    page: {
+      locator: () => locator,
+      evaluate: async (_fn, payload) => calls.push(["evaluate", payload]),
+    },
   });
 
   const result = await manager.act("forced-wait-dispatch", [{
@@ -134,13 +140,11 @@ test("explicit force dispatches through the DOM when the locator attached wait i
   assert.match(result.trace[0].playwrightError, /locator to attach/i);
   assert.deepEqual(calls, [
     ["waitFor", { state: "attached", timeout: 250 }],
-    ["dispatchEvent", "click", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
+    ["evaluate", {
+      selector: "#btn-guide",
+      eventType: "click",
       detail: 1,
-      button: 0,
-    }, { timeout: 250 }],
+    }],
   ]);
 });
 

@@ -24,15 +24,43 @@ function normalizedTimeout(value, fallback) {
   return Number.isFinite(timeout) && timeout >= 0 ? timeout : fallback;
 }
 
+function forcedPointerEvent(op) {
+  return {
+    eventType: op === "doubleClick" ? "dblclick" : "click",
+    detail: op === "doubleClick" ? 2 : 1,
+  };
+}
+
 async function dispatchForcedPointerAction(locator, op, timeout) {
-  const eventType = op === "doubleClick" ? "dblclick" : "click";
+  const { eventType, detail } = forcedPointerEvent(op);
   await locator.dispatchEvent(eventType, {
     bubbles: true,
     cancelable: true,
     composed: true,
-    detail: op === "doubleClick" ? 2 : 1,
+    detail,
     button: 0,
   }, { timeout });
+  return `dom-${eventType}`;
+}
+
+async function dispatchForcedPointerActionInPage(page, selector, op) {
+  const { eventType, detail } = forcedPointerEvent(op);
+  await page.evaluate(({ selector: cssSelector, eventType: type, detail: clickCount }) => {
+    let element;
+    try {
+      element = document.querySelector(cssSelector);
+    } catch {
+      throw new Error(`forced DOM dispatch requires a CSS selector: ${cssSelector}`);
+    }
+    if (!element) throw new Error(`forced DOM dispatch selector not found: ${cssSelector}`);
+    element.dispatchEvent(new MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      detail: clickCount,
+      button: 0,
+    }));
+  }, { selector, eventType, detail });
   return `dom-${eventType}`;
 }
 
@@ -255,7 +283,7 @@ export class BrowserSessionManager {
           if (op === "click" || op === "doubleClick") {
             if (waitError) {
               step.playwrightError = waitError?.message || String(waitError);
-              step.actionMode = await dispatchForcedPointerAction(target, op, timeout);
+              step.actionMode = await dispatchForcedPointerActionInPage(page, action.selector, op);
             } else try {
               await target[op === "doubleClick" ? "dblclick" : "click"](actionOptions);
               step.actionMode = "playwright";
