@@ -119,8 +119,9 @@ Common actions:
 ```json
 [
   { "type": "annotate", "selector": "role=button|Continue", "label": "Continue" },
-  { "type": "click", "selector": "role=button|Continue" },
+  { "type": "click", "selector": "#continue", "timeoutMs": 1500, "force": true },
   { "type": "fill", "selector": "#email", "text": "hello@example.com" },
+  { "type": "eval", "js": "({ title: document.title })" },
   { "type": "drag", "fromX": 200, "fromY": 300, "toX": 600, "toY": 300 },
   { "type": "press", "key": "Escape" }
 ]
@@ -142,6 +143,8 @@ Recommended MCP behavior:
 - Prefer snapshots for target discovery and screenshots for visual judgment.
 - Use `pursr_inspect` when the issue is position, z-index, clipping, opacity, transform, or layout.
 - Use `pursr_act` for small verified action batches, not long blind scripts.
+- Eval actions require non-empty `js`; do not use the legacy `script` field.
+- Keep `force: true` caller-controlled. Inspect first; the last-resort page-level fallback requires a CSS selector, while other selector dialects can use verified coordinates.
 - When recording, add visible cursor movement, target labels, and short pauses so the output is understandable.
 
 ## Communication Drafting

@@ -87,6 +87,33 @@ test("Visual Operator cursor, target, and click marker render into PNG", { timeo
   }
 });
 
+test("eval rejects a missing js payload instead of reporting a false-positive success", { timeout: 60_000 }, async () => {
+  const manager = new BrowserSessionManager({ outputDir });
+  try {
+    await manager.open({
+      sessionId: "eval-contract",
+      url: baseUrl,
+      flags: { width: 800, height: 600 },
+    });
+
+    const acted = await manager.act("eval-contract", [
+      { type: "eval", script: "({ answer: 42 })" },
+    ]);
+
+    assert.equal(acted.failed, true);
+    assert.equal(acted.trace[0].ok, false);
+    assert.match(acted.trace[0].error, /non-empty js/i);
+
+    const valid = await manager.act("eval-contract", [
+      { type: "eval", js: "({ answer: 42 })" },
+    ]);
+    assert.equal(valid.failed, false);
+    assert.deepEqual(valid.trace[0].result, { answer: 42 });
+  } finally {
+    await manager.closeAll();
+  }
+});
+
 test("CDP mode attaches to Chrome and disconnects without closing its owner", { timeout: 60_000 }, async () => {
   const portProbe = createServer();
   await new Promise((resolveListen) => portProbe.listen(0, "127.0.0.1", resolveListen));

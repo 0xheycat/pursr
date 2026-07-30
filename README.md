@@ -228,8 +228,8 @@ npx pursr-mcp --verbose
 | `pursr_session_open` | Open a headless, visible, or CDP browser session with optional Visual Operator |
 | `pursr_sessions` | List active browser sessions |
 | `pursr_snapshot` | Visible rendered nodes, geometry, semantics, and computed styles |
-| `pursr_act` | Interact plus move cursor, annotate targets, and clear visual feedback |
-| `pursr_screenshot` | Return the current PNG directly to the vision model |
+| `pursr_act` | Interact with per-action timeouts, caller-controlled force fallback, strict `eval.js`, cursor movement, and annotations |
+| `pursr_screenshot` | Return the current PNG directly to the vision model, with bounded selector and CDP clip fallback |
 | `pursr_inspect` | Inspect exact geometry, computed styles, and stacking ancestors |
 | `pursr_diagnostics` | Read console, page errors, failed requests, and HTTP failures |
 | `pursr_session_close` | Close the tab and release its browser process |
@@ -261,11 +261,14 @@ Example action arguments:
   "sessionId": "farm",
   "actions": [
     { "type": "hover", "selector": "role=button|Build" },
-    { "type": "click", "selector": "text=Barn" },
-    { "type": "wait", "selector": "role=dialog" }
+    { "type": "click", "selector": "text=Barn", "timeoutMs": 3000 },
+    { "type": "wait", "selector": "role=dialog" },
+    { "type": "eval", "js": "({ title: document.title })" }
   ]
 }
 ```
+
+Eval actions require a non-empty `js` field; the legacy `script` field is rejected instead of reporting a false-positive success. `force: true` is never automatic. Use it only after inspection confirms the intended target. If a locator itself stalls, the final page-level DOM fallback accepts a CSS selector; other selector dialects can use a verified coordinate fallback.
 
 ### Visual Operator
 
@@ -330,7 +333,7 @@ Visual actions use the regular `pursr_act` tool:
   "actions": [
     { "type": "move", "x": 640, "y": 360, "durationMs": 300 },
     { "type": "annotate", "selector": "role=button|Publish", "label": "Primary CTA" },
-    { "type": "click", "selector": "role=button|Publish" },
+    { "type": "click", "selector": "#publish", "timeoutMs": 1500, "force": true },
     { "type": "clearAnnotations", "keepCursor": true }
   ]
 }

@@ -352,9 +352,12 @@ export class BrowserSessionManager {
         } else if (op === "clearAnnotations") {
           if (!visual) throw new Error("clearAnnotations requires a visual session");
           await clearVisualAnnotations(page, { keepCursor: action.keepCursor !== false });
-        }
-        else if (op === "eval") step.result = await page.evaluate(String(action.js || ""));
-        else throw new Error(`unknown action type: ${op}`);
+        } else if (op === "eval") {
+          if (typeof action.js !== "string" || !action.js.trim()) {
+            throw new Error("eval requires non-empty js");
+          }
+          step.result = await page.evaluate(action.js);
+        } else throw new Error(`unknown action type: ${op}`);
         if (action.settleMs) await page.waitForTimeout(Number(action.settleMs));
         step.ok = true;
       } catch (error) {
