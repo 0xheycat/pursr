@@ -504,3 +504,183 @@ test("persistent auto capture avoids repeated identical Playwright timeouts", as
     rmSync(outputDir, { recursive: true, force: true });
   }
 });
+
+test("header-shaped but corrupt PNG bytes are rejected before publish", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-capture-corrupt-png-"));
+  const file = join(outputDir, "corrupt.png");
+  const corrupt = Buffer.alloc(32);
+  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(corrupt, 0);
+  corrupt.writeUInt32BE(13, 8);
+  corrupt.write("IHDR", 12, "ascii");
+  corrupt.writeUInt32BE(4, 16);
+  corrupt.writeUInt32BE(3, 20);
+  const manager = new BrowserSessionManager({ outputDir });
+  const context = cdpContext(async () => ({ data: corrupt.toString("base64") }));
+  const page = mockSession(manager, "corrupt-png", { context });
+  page.context = () => context;
+
+  try {
+    await assert.rejects(
+      manager.screenshot("corrupt-png", { out: file, strategy: "cdp", timeoutMs: 100 }),
+      /invalid.*png|image validation|unexpected end|crc/i,
+    );
+    assert.equal(existsSync(file), false);
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("adaptive selector capture uses CDP first after Playwright degrades", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-selector-adaptive-"));
+  const bytes = solidPng(4, 3);
+  let locatorCalls = 0;
+  const target = {
+    first() { return this; },
+    screenshot: async () => {
+      locatorCalls += 1;
+      throw new Error("locator screenshot timed out while waiting for fonts");
+    },
+    waitFor: async () => {},
+    boundingBox: async () => ({ x: 0, y: 0, width: 4, height: 3 }),
+  };
+  const manager = new BrowserSessionManager({ outputDir });
+  const context = cdpContext(async () => ({ data: bytes.toString("base64") }));
+  const page = mockSession(manager, "selector-adaptive", {
+    context,
+    page: {
+      locator: () => target,
+      evaluate: async () => ({ x: 0, y: 0 }),
+    },
+  });
+  page.context = () => context;
+
+  try {
+    await manager.screenshot("selector-adaptive", { selector: "#target", timeoutMs: 100 });
+    const second = await manager.screenshot("selector-adaptive", { selector: "#target", timeoutMs: 100 });
+    assert.equal(locatorCalls, 1);
+    assert.equal(second.attempts[0].strategy, "cdp");
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("stitched full-page capture tiles both horizontal and vertical overflow", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-stitch-2d-"));
+  const clips = [];
+  const manager = new BrowserSessionManager({ outputDir });
+  const context = cdpContext(async (method) => {
+    if (method === "Page.getLayoutMetrics") {
+      return { cssContentSize: { x: 0, y: 0, width: 6, height: 5 } };
+    }
+    throw new Error(`unexpected CDP method: ${method}`);
+  });
+  const page = mockSession(manager, "stitch-2d", {
+    context,
+    page: {
+      viewportSize: () => ({ width: 4, height: 3 }),
+      screenshot: async ({ clip }) => {
+        clips.push(clip);
+        return solidPng(clip.width, clip.height);
+      },
+    },
+  });
+  page.context = () => context;
+
+  try {
+    const result = await manager.screenshot("stitch-2d", {
+      full: true,
+      strategy: "stitched",
+      timeoutMs: 500,
+    });
+    const decoded = PNG.sync.read(Buffer.from(result.data, "base64"));
+    assert.deepEqual({ width: decoded.width, height: decoded.height }, { width: 6, height: 5 });
+    assert.ok(clips.some((clip) => clip.x === 4), "stitching must cover horizontal overflow");
+    assert.ok(clips.some((clip) => clip.y === 3), "stitching must cover vertical overflow");
+    for (let offset = 3; offset < decoded.data.length; offset += 4) {
+      assert.equal(decoded.data[offset], 255, `pixel ${Math.floor(offset / 4)} must be populated`);
+    }
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("total deadline bounds artifact directory preparation", { timeout: 500 }, async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-deadline-mkdir-"));
+  const manager = new BrowserSessionManager({ outputDir });
+  const originalMkdir = fsPromises.mkdir;
+  fsPromises.mkdir = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  };
+  mockSession(manager, "deadline-mkdir", {
+    page: { screenshot: async () => solidPng(2, 2) },
+  });
+
+  try {
+    const started = Date.now();
+    await assert.rejects(
+      manager.screenshot("deadline-mkdir", { strategy: "playwright", timeoutMs: 20 }),
+      /deadline|timed out/i,
+    );
+    assert.ok(Date.now() - started < 70, "directory preparation must share the total deadline");
+  } finally {
+    fsPromises.mkdir = originalMkdir;
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("adaptive auto capture periodically re-probes Playwright health", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-capture-reprobe-"));
+  const bytes = solidPng(3, 2);
+  let playwrightCalls = 0;
+  const manager = new BrowserSessionManager({ outputDir });
+  const context = cdpContext(async () => ({ data: bytes.toString("base64") }));
+  const page = mockSession(manager, "reprobe", {
+    context,
+    page: {
+      screenshot: async ({ path }) => {
+        playwrightCalls += 1;
+        if (playwrightCalls === 1) throw new Error("initial Playwright timeout");
+        writeFileSync(path, bytes);
+      },
+    },
+  });
+  page.context = () => context;
+
+  try {
+    const results = [];
+    for (let index = 0; index < 22; index += 1) {
+      results.push(await manager.screenshot("reprobe", { timeoutMs: 100 }));
+    }
+    assert.equal(playwrightCalls, 3, "auto must probe once, then restore healthy Playwright capture");
+    assert.equal(results[20].attempts[0].strategy, "playwright");
+    assert.equal(results[21].attempts[0].strategy, "playwright");
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("selector capture rejects stitched strategy explicitly", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-selector-stitched-"));
+  const bytes = solidPng(2, 2);
+  const target = {
+    first() { return this; },
+    screenshot: async () => bytes,
+  };
+  const manager = new BrowserSessionManager({ outputDir });
+  mockSession(manager, "selector-stitched", {
+    page: { locator: () => target },
+  });
+
+  try {
+    await assert.rejects(
+      manager.screenshot("selector-stitched", {
+        selector: "#target",
+        strategy: "stitched",
+        timeoutMs: 100,
+      }),
+      /stitched.*selector|selector.*stitched/i,
+    );
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
