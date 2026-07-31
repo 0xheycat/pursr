@@ -409,7 +409,18 @@ export async function captureScreenshot(page, {
     }
 
     if (!captured) throw captureFailure(attempts);
-    const image = await publishCapture(captured, file, temp, deadline);
+    let image;
+    try {
+      image = await publishCapture(captured, file, temp, deadline);
+    } catch (error) {
+      const success = [...attempts].reverse().find((attempt) => attempt.status === "success");
+      if (success) {
+        success.status = "failed";
+        success.errorCode = errorCode(error);
+        success.error = errorMessage(error);
+      }
+      throw captureFailure(attempts);
+    }
     const elapsedMs = Date.now() - deadline.startedAt;
 
     return {
