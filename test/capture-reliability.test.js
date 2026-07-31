@@ -321,6 +321,7 @@ test("different browser sessions remain concurrent", async () => {
     release?.();
     rmSync(outputDir, { recursive: true, force: true });
   }
+});
 
 test("close waits for an active same-session capture before releasing browser resources", async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "pursr-capture-close-queue-"));
@@ -423,7 +424,6 @@ test("snapshot and inspect share the same-session queue with capture", async () 
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
   }
-});
 });
 
 test("full-page capture reaches a stitched fallback when compositor capture fails", async () => {
