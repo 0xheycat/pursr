@@ -10,6 +10,7 @@ import {
 import { listViewports, resolveViewport, VIEWPORTS } from "../src/viewport.js";
 import { resolveLocator, parseTextSelector } from "../src/selector.js";
 import { browserCandidates, browserSetupHints, discoverBrowsers } from "../src/browser-discovery.js";
+import { resolveBrowserExecutable } from "../src/runway.js";
 import { compareVersions, shouldCheckForUpdate } from "../src/update-notifier.js";
 import { renderDoctorText, renderSetupText } from "../src/doctor.js";
 
@@ -213,6 +214,52 @@ test("browser discovery includes developer channels and PATH executables", () =>
   assert.ok(linuxCandidates.includes("/usr/bin/microsoft-edge-dev"));
   assert.ok(linuxCandidates.includes("/usr/bin/brave-browser-nightly"));
   assert.ok(linuxCandidates.includes("/usr/local/bin/google-chrome"));
+});
+
+test("browser discovery finds full Chromium in the Playwright cache", () => {
+  const root = "/cache/ms-playwright";
+  const expected = `${root}/chromium-1234/chrome-linux64/chrome`;
+  const options = {
+    platform: "linux",
+    env: { PATH: "", PLAYWRIGHT_BROWSERS_PATH: root },
+    homeDir: "/home/test",
+    readDir: (path) => path === root
+      ? ["chromium-1200", "chromium_headless_shell-1234", "chromium-1234", "ffmpeg-1011"]
+      : [],
+  };
+  const candidates = browserCandidates(options);
+  assert.ok(candidates.includes(expected));
+  assert.equal(candidates.some((path) => path.includes("chromium_headless_shell")), false);
+  assert.equal(discoverBrowsers({ ...options, exists: (path) => path === expected }).preferred, expected);
+
+  const macRoot = "/Users/test/Library/Caches/ms-playwright";
+  const macCandidates = browserCandidates({
+    platform: "darwin",
+    env: { PATH: "", PLAYWRIGHT_BROWSERS_PATH: macRoot },
+    homeDir: "/Users/test",
+    readDir: (path) => path === macRoot ? ["chromium-1234"] : [],
+  });
+  assert.ok(macCandidates.includes(
+    `${macRoot}/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`,
+  ));
+  assert.ok(macCandidates.includes(
+    `${macRoot}/chromium-1234/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`,
+  ));
+});
+
+test("browser launch falls back to an installed Playwright Chromium", async () => {
+  const bundled = "/cache/ms-playwright/chromium-123/chrome-linux/chrome";
+  const resolved = await resolveBrowserExecutable({
+    chromium: { executablePath: () => bundled },
+    discovery: {
+      platform: "linux",
+      env: { PATH: "" },
+      homeDir: "/home/test",
+      exists: () => false,
+    },
+    exists: (path) => path === bundled,
+  });
+  assert.equal(resolved, bundled);
 });
 
 test("browser setup hints are platform-specific", () => {

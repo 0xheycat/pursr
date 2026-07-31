@@ -1,11 +1,11 @@
 // Persistent browser sessions for agent-driven visual QA.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdirSync } from "node:fs";
 import { connectOverCDP, launch, newPage } from "./runway.js";
 import { resolveViewport } from "./viewport.js";
 import { gotoOrThrow, settle, CLICK_TIMEOUT_MS, WAIT_DEFAULT_TIMEOUT_MS } from "./overlays.js";
 import { resolveLocator } from "./selector.js";
+import { captureScreenshot } from "./capture.js";
 import {
   clearVisualAnnotations,
   highlightVisualTarget,
@@ -17,6 +17,59 @@ import {
 
 const MAX_DIAGNOSTICS = 250;
 const MAX_ACTIONS = 50;
+const PLAYWRIGHT_REPROBE_AFTER_CDP_SUCCESSES = 20;
+
+function createCaptureHealth() {
+  return {
+    playwright: {
+      status: "healthy",
+      consecutiveFailures: 0,
+      lastSuccessAt: null,
+      lastFailureAt: null,
+      cdpSuccessesSinceFailure: 0,
+    },
+    cdp: { status: "unknown", consecutiveFailures: 0, lastSuccessAt: null, lastFailureAt: null },
+  };
+}
+
+function captureAttempts(value) {
+  return Array.isArray(value?.attempts) ? value.attempts : [];
+}
+
+function updateCaptureHealth(session, value) {
+  const now = new Date().toISOString();
+  for (const attempt of captureAttempts(value)) {
+    if (attempt.strategy === "playwright") {
+      const state = session.captureHealth.playwright;
+      if (attempt.status === "success") {
+        state.status = "healthy";
+        state.consecutiveFailures = 0;
+        state.lastSuccessAt = now;
+        state.cdpSuccessesSinceFailure = 0;
+      } else {
+        state.status = "degraded";
+        state.consecutiveFailures += 1;
+        state.lastFailureAt = now;
+        state.cdpSuccessesSinceFailure = 0;
+      }
+      continue;
+    }
+    if (attempt.strategy !== "cdp") continue;
+    const state = session.captureHealth.cdp;
+    if (attempt.status === "success") {
+      state.status = "healthy";
+      state.consecutiveFailures = 0;
+      state.lastSuccessAt = now;
+      if (session.captureHealth.playwright.status === "degraded") {
+        session.captureHealth.playwright.cdpSuccessesSinceFailure += 1;
+      }
+    } else {
+      state.status = "degraded";
+      state.consecutiveFailures += 1;
+      state.lastFailureAt = now;
+    }
+  }
+}
 const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
 
 function normalizedTimeout(value, fallback) {
@@ -62,31 +115,6 @@ async function dispatchForcedPointerActionInPage(page, selector, op) {
     }));
   }, { selector, eventType, detail });
   return `dom-${eventType}`;
-}
-
-async function captureSelectorWithCdp(page, clip, file) {
-  const context = page.context?.();
-  if (!context?.newCDPSession) throw new Error("CDP screenshot fallback is unavailable");
-  const scroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
-  const session = await context.newCDPSession(page);
-  try {
-    const result = await session.send("Page.captureScreenshot", {
-      format: "png",
-      fromSurface: true,
-      captureBeyondViewport: true,
-      clip: {
-        x: Math.max(0, clip.x + Number(scroll?.x || 0)),
-        y: Math.max(0, clip.y + Number(scroll?.y || 0)),
-        width: clip.width,
-        height: clip.height,
-        scale: 1,
-      },
-    });
-    if (!result?.data) throw new Error("CDP screenshot returned no data");
-    writeFileSync(file, Buffer.from(result.data, "base64"));
-  } finally {
-    await session.detach?.().catch(() => {});
-  }
 }
 
 async function settleWithin(task, timeoutMs, label, warnings) {
@@ -149,10 +177,25 @@ export class BrowserSessionManager {
 
   get size() { return this.sessions.size; }
 
-  get(sessionId) {
+  get(sessionId, { allowClosing = false } = {}) {
     const session = this.sessions.get(String(sessionId || ""));
     if (!session) throw new Error(`unknown session: ${sessionId}`);
+    if (!session.captureHealth) session.captureHealth = createCaptureHealth();
+    if (!session.operationTail) session.operationTail = Promise.resolve();
+    if (session.closing && !allowClosing) throw new Error(`session is closing: ${sessionId}`);
     return session;
+  }
+
+  _enqueueSession(session, operation) {
+    const previous = session.operationTail || Promise.resolve();
+    const task = previous.catch(() => {}).then(operation);
+    session.operationTail = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  _enqueue(sessionId, operation) {
+    const session = this.get(sessionId);
+    return this._enqueueSession(session, () => operation(session));
   }
 
   list() {
@@ -197,8 +240,8 @@ export class BrowserSessionManager {
     }
   }
 
-  async snapshot(sessionId, { selector = "body", maxNodes = 250, includeStyles = true } = {}) {
-    const { page } = this.get(sessionId);
+  async _snapshot(sessionId, { selector = "body", maxNodes = 250, includeStyles = true } = {}) {
+    const { page } = this.get(sessionId, { allowClosing: true });
     const limit = Math.max(1, Math.min(1000, Number(maxNodes) || 250));
     return await page.evaluate(({ selector, limit, includeStyles }) => {
       const roots = [...document.querySelectorAll(selector)];
@@ -230,9 +273,13 @@ export class BrowserSessionManager {
     }, { selector, limit, includeStyles: includeStyles !== false });
   }
 
-  async inspect(sessionId, selector) {
+  async snapshot(sessionId, options = {}) {
+    return await this._enqueue(sessionId, () => this._snapshot(sessionId, options));
+  }
+
+  async _inspect(sessionId, selector) {
     if (!selector) throw new Error("selector is required");
-    const { page } = this.get(sessionId);
+    const { page } = this.get(sessionId, { allowClosing: true });
     const locator = await resolveLocator(page, selector);
     await locator.first().waitFor({ state: "attached", timeout: CLICK_TIMEOUT_MS });
     return await locator.first().evaluate((el) => {
@@ -249,10 +296,14 @@ export class BrowserSessionManager {
     });
   }
 
-  async act(sessionId, actions = []) {
+  async inspect(sessionId, selector) {
+    return await this._enqueue(sessionId, () => this._inspect(sessionId, selector));
+  }
+
+  async _act(sessionId, actions = []) {
     if (!Array.isArray(actions) || !actions.length) throw new Error("actions must be a non-empty array");
     if (actions.length > MAX_ACTIONS) throw new Error(`actions cannot exceed ${MAX_ACTIONS}`);
-    const session = this.get(sessionId);
+    const session = this.get(sessionId, { allowClosing: true });
     const { page, visual, operatorOptions } = session;
     const trace = [];
     for (let i = 0; i < actions.length; i++) {
@@ -368,45 +419,35 @@ export class BrowserSessionManager {
     return { sessionId, url: page.url(), title: await page.title(), trace, failed: trace.some((step) => !step.ok) };
   }
 
-  async screenshot(sessionId, { out, full = false, selector, timeoutMs } = {}) {
-    const { page } = this.get(sessionId);
-    const timeout = normalizedTimeout(timeoutMs, CLICK_TIMEOUT_MS);
-    const file = out || join(this.outputDir, `pursr-${sessionId}-${Date.now()}.png`);
-    mkdirSync(dirname(file), { recursive: true });
-    let captureMode = full ? "full-page" : "viewport";
-    let fallbackError = null;
-    if (selector) {
-      const locator = await resolveLocator(page, selector);
-      const target = locator.first();
-      try {
-        await target.screenshot({ path: file, timeout, animations: "disabled" });
-        captureMode = "locator";
-      } catch (error) {
-        fallbackError = error?.message || String(error);
-        await target.waitFor({ state: "visible", timeout });
-        const clip = await target.boundingBox();
-        if (!clip || clip.width <= 0 || clip.height <= 0) throw error;
-        try {
-          await captureSelectorWithCdp(page, clip, file);
-          captureMode = "cdp-clip-fallback";
-        } catch (cdpError) {
-          await page.screenshot({ path: file, clip, timeout, animations: "disabled" });
-          captureMode = "clip-fallback";
-          fallbackError = `${fallbackError}; CDP fallback: ${cdpError?.message || String(cdpError)}`;
-        }
-      }
-    } else {
-      await page.screenshot({ path: file, fullPage: !!full, timeout, animations: "disabled" });
+  async act(sessionId, actions = []) {
+    return await this._enqueue(sessionId, () => this._act(sessionId, actions));
+  }
+
+  async _screenshot(sessionId, options = {}) {
+    const session = this.get(sessionId, { allowClosing: true });
+    const playwrightHealth = session.captureHealth.playwright;
+    const preferredStrategy = (!options.strategy || options.strategy === "auto")
+      && playwrightHealth.status === "degraded"
+      && playwrightHealth.cdpSuccessesSinceFailure < PLAYWRIGHT_REPROBE_AFTER_CDP_SUCCESSES
+      ? "cdp"
+      : undefined;
+    try {
+      const result = await captureScreenshot(session.page, {
+        ...options,
+        preferredStrategy,
+        outputDir: this.outputDir,
+        sessionId,
+      });
+      updateCaptureHealth(session, result);
+      return result;
+    } catch (error) {
+      updateCaptureHealth(session, error);
+      throw error;
     }
-    return {
-      sessionId,
-      out: file,
-      url: page.url(),
-      data: readFileSync(file).toString("base64"),
-      mimeType: "image/png",
-      captureMode,
-      ...(fallbackError ? { fallbackError } : {}),
-    };
+  }
+
+  async screenshot(sessionId, options = {}) {
+    return await this._enqueue(sessionId, () => this._screenshot(sessionId, options));
   }
 
   diagnostics(sessionId, { clear = false } = {}) {
@@ -421,10 +462,8 @@ export class BrowserSessionManager {
     return { sessionId, ...result };
   }
 
-  async close(sessionId) {
+  async _close(sessionId, session) {
     const id = String(sessionId || "");
-    const session = this.sessions.get(id);
-    if (!session) return { sessionId: id, closed: false };
     this.sessions.delete(id);
     const warnings = [];
     let video = null;
@@ -438,6 +477,19 @@ export class BrowserSessionManager {
       video = await settleWithin(() => session.video.path(), this.closeTimeoutMs, "video path", warnings);
     }
     return { sessionId: id, closed: true, video, warnings };
+  }
+
+  async close(sessionId) {
+    const id = String(sessionId || "");
+    const session = this.sessions.get(id);
+    if (!session) return { sessionId: id, closed: false };
+    if (session.closePromise) return await session.closePromise;
+    if (!session.captureHealth) session.captureHealth = createCaptureHealth();
+    if (!session.operationTail) session.operationTail = Promise.resolve();
+    session.closing = true;
+    const closing = this._enqueueSession(session, () => this._close(id, session));
+    session.closePromise = closing;
+    return await closing;
   }
 
   async closeAll() {

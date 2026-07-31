@@ -1,10 +1,11 @@
-import { after, before, test } from "node:test";
+import { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runOperator } from "../src/operator.js";
+import { browserTest } from "./browser-fixture.js";
 
 let server;
 let baseUrl;
@@ -42,7 +43,7 @@ after(async () => {
   rmSync(outputDir, { recursive: true, force: true });
 });
 
-test("operator records WebM and handles selector, coordinate, and drag actions", { timeout: 60_000 }, async () => {
+browserTest("operator records WebM and handles selector, coordinate, and drag actions", { timeout: 60_000 }, async () => {
   const screenshot = join(outputDir, "final.png");
   const result = await runOperator({
     url: baseUrl,

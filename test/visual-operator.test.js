@@ -1,4 +1,4 @@
-import { after, before, test } from "node:test";
+import { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { PNG } from "pngjs";
 import { BrowserSessionManager } from "../src/session.js";
 import { launch } from "../src/runway.js";
+import { browserTest } from "./browser-fixture.js";
 
 let server;
 let baseUrl;
@@ -35,7 +36,7 @@ after(async () => {
   rmSync(outputDir, { recursive: true, force: true });
 });
 
-test("Visual Operator cursor, target, and click marker render into PNG", { timeout: 60_000 }, async () => {
+browserTest("Visual Operator cursor, target, and click marker render into PNG", { timeout: 60_000 }, async () => {
   const manager = new BrowserSessionManager({ outputDir });
   try {
     const opened = await manager.open({
@@ -87,7 +88,7 @@ test("Visual Operator cursor, target, and click marker render into PNG", { timeo
   }
 });
 
-test("eval rejects a missing js payload instead of reporting a false-positive success", { timeout: 60_000 }, async () => {
+browserTest("eval rejects a missing js payload instead of reporting a false-positive success", { timeout: 60_000 }, async () => {
   const manager = new BrowserSessionManager({ outputDir });
   try {
     await manager.open({
@@ -114,7 +115,7 @@ test("eval rejects a missing js payload instead of reporting a false-positive su
   }
 });
 
-test("CDP mode attaches to Chrome and disconnects without closing its owner", { timeout: 60_000 }, async () => {
+browserTest("CDP mode attaches to Chrome and disconnects without closing its owner", { timeout: 60_000 }, async () => {
   const portProbe = createServer();
   await new Promise((resolveListen) => portProbe.listen(0, "127.0.0.1", resolveListen));
   const cdpPort = portProbe.address().port;

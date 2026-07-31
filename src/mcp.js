@@ -221,13 +221,15 @@ class PursrMCPServer {
       },
       {
         name: "pursr_screenshot",
-        description: "Capture the current persistent session and return the PNG directly to the model as image content. Selector capture first disables animations, then falls back to a bounded page clip when a dynamic element never reaches Playwright's stability condition.",
+        description: "Capture the current persistent session and return validated PNG image content plus structured recovery evidence. Auto adapts between Playwright and CDP for viewport, full-page, and selector capture with bounded clip recovery; stitched capture is full-page only. Every stage shares one total deadline.",
         inputSchema: {
           type: "object",
           properties: {
             sessionId: { type: "string" }, out: { type: "string" }, full: { type: "boolean" },
             selector: { type: "string", description: "Capture only the first matching element" },
-            timeoutMs: { type: "number", minimum: 0, description: "Capture timeout used by locator and clip-fallback paths." },
+            timeoutMs: { type: "number", minimum: 0, description: "Total capture operation deadline shared by all strategies and artifact publishing." },
+            strategy: { type: "string", enum: ["auto", "playwright", "cdp", "stitched"], description: "Caller-controlled capture strategy. Auto adapts from observed per-session health. Stitched requires full=true and cannot be combined with selector." },
+            animations: { type: "string", enum: ["auto", "allow", "disabled"], description: "Animation handling. Auto preserves the current disabled default." },
           },
           required: ["sessionId"],
         },
@@ -457,14 +459,16 @@ class PursrMCPServer {
 
   async _sessionScreenshot(args) {
     const result = await this.sessions.screenshot(this._requireSessionId(args), args);
+    const { data, mimeType, ...metadata } = result;
     recordResource({
       kind: "session", id: args.sessionId, name: `session screenshot: ${args.sessionId}`,
       description: result.url, uri: `pursr://session/${encodeURIComponent(args.sessionId)}`,
-      mimeType: result.mimeType, file: result.out, meta: { url: result.url, ts: nowIso() },
+      mimeType, file: result.out,
+      meta: { url: result.url, captureMode: result.captureMode, fallbackUsed: result.fallbackUsed, ts: nowIso() },
     });
     return [
-      { type: "text", text: JSON.stringify({ sessionId: result.sessionId, out: result.out, url: result.url }, null, 2) },
-      { type: "image", data: result.data, mimeType: result.mimeType },
+      { type: "text", text: JSON.stringify(metadata, null, 2) },
+      { type: "image", data, mimeType },
     ];
   }
 

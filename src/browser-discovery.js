@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
 
@@ -35,6 +35,51 @@ function pathExecutableCandidates(env, names, platform) {
   return out;
 }
 
+function playwrightCacheRoots(platform, env, home) {
+  const configured = envPath(env, "PLAYWRIGHT_BROWSERS_PATH");
+  const defaults = platform === "win32"
+    ? [joinIf(platform, envPath(env, "LOCALAPPDATA"), "ms-playwright")]
+    : platform === "darwin"
+      ? [pathJoin(platform, home, "Library", "Caches", "ms-playwright")]
+      : [pathJoin(platform, home, ".cache", "ms-playwright")];
+  return uniq([
+    configured && configured !== "0" ? configured : "",
+    ...defaults,
+  ]);
+}
+
+function playwrightChromiumCandidates(options = {}) {
+  const platform = options.platform || process.platform;
+  const env = options.env || process.env;
+  const home = options.homeDir || homedir();
+  const readDir = options.readDir || readdirSync;
+  const layouts = platform === "win32"
+    ? [["chrome-win", "chrome.exe"], ["chrome-win64", "chrome.exe"]]
+    : platform === "darwin"
+      ? [
+        ["chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"],
+        ["chrome-mac-arm64", "Chromium.app", "Contents", "MacOS", "Chromium"],
+        ["chrome-mac-x64", "Chromium.app", "Contents", "MacOS", "Chromium"],
+        ["chrome-mac", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+        ["chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+        ["chrome-mac-x64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+      ]
+      : [["chrome-linux", "chrome"], ["chrome-linux64", "chrome"]];
+  const out = [];
+  for (const root of playwrightCacheRoots(platform, env, home)) {
+    let revisions = [];
+    try {
+      revisions = readDir(root)
+        .filter((name) => /^chromium-\d+$/.test(String(name)))
+        .sort((a, b) => Number(String(b).split("-").at(-1)) - Number(String(a).split("-").at(-1)));
+    } catch {}
+    for (const revision of revisions) {
+      for (const layout of layouts) out.push(pathJoin(platform, root, String(revision), ...layout));
+    }
+  }
+  return uniq(out);
+}
+
 export function browserCandidates(options = {}) {
   const platform = options.platform || process.platform;
   const env = options.env || process.env;
@@ -42,6 +87,7 @@ export function browserCandidates(options = {}) {
   const localAppData = envPath(env, "LOCALAPPDATA");
   const programFiles = envPath(env, "ProgramFiles") || "C:\\Program Files";
   const programFilesX86 = envPath(env, "ProgramFiles(x86)") || "C:\\Program Files (x86)";
+  const playwright = playwrightChromiumCandidates({ ...options, platform, env, homeDir: home });
 
   const explicit = [
     envPath(env, "PURSR_BROWSER_PATH"),
@@ -89,6 +135,7 @@ export function browserCandidates(options = {}) {
       pathJoin(platform, programFiles, "Chromium", "Application", "chrome.exe"),
       pathJoin(platform, programFilesX86, "Chromium", "Application", "chrome.exe"),
       ...pathExecutableCandidates(env, pathNames, platform),
+      ...playwright,
     ]);
   }
 
@@ -116,6 +163,7 @@ export function browserCandidates(options = {}) {
         "chromium", "chromium-browser", "microsoft-edge", "microsoft-edge-beta",
         "microsoft-edge-dev", "brave-browser", "brave-browser-beta", "brave-browser-nightly",
       ], platform),
+      ...playwright,
     ]);
   }
 
@@ -142,6 +190,7 @@ export function browserCandidates(options = {}) {
       "microsoft-edge-beta", "microsoft-edge-dev", "brave-browser", "brave-browser-beta",
       "brave-browser-nightly",
     ], platform),
+    ...playwright,
   ]);
 }
 

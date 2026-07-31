@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { browserSetupHints, discoverBrowsers } from "./browser-discovery.js";
-import { resolvePlaywrightCore } from "./runway.js";
+import { resolveBrowserExecutable, resolvePlaywrightCore } from "./runway.js";
 
 function nodeMajor(version = process.version) {
   const m = String(version).match(/^v?(\d+)/);
@@ -17,19 +17,28 @@ export async function runDoctor(options = {}) {
   const version = options.version || process.version;
   const browsers = discoverBrowsers(options);
   let playwright = null;
+  let runtimeBrowser = browsers.preferred;
   try {
     const resolved = await resolvePlaywrightCore();
     playwright = okCheck("playwright-core", true, { source: resolved.source });
+    runtimeBrowser ||= await resolveBrowserExecutable({
+      chromium: resolved.chromium,
+      discovery: options,
+      exists: options.exists,
+    });
   } catch (e) {
     playwright = okCheck("playwright-core", false, { error: e.message });
   }
+  const runtimeBrowsers = runtimeBrowser && !browsers.found.includes(runtimeBrowser)
+    ? { ...browsers, found: [...browsers.found, runtimeBrowser], preferred: runtimeBrowser }
+    : browsers;
 
   const packageRoot = options.packageRoot || dirname(dirname(fileURLToPath(import.meta.url)));
   const skillPath = join(packageRoot, "SKILL.md");
   const checks = [
     okCheck("node", nodeMajor(version) >= 18, { version, required: ">=18" }),
     playwright,
-    okCheck("browser", !!browsers.preferred, { preferred: browsers.preferred, found: browsers.found }),
+    okCheck("browser", !!runtimeBrowsers.preferred, { preferred: runtimeBrowsers.preferred, found: runtimeBrowsers.found }),
     okCheck("skill", existsSync(skillPath), { path: skillPath }),
   ];
 
@@ -37,7 +46,7 @@ export async function runDoctor(options = {}) {
   return {
     ok,
     checks,
-    browsers,
+    browsers: runtimeBrowsers,
     hints: ok ? [] : browserSetupHints(options.platform || process.platform),
   };
 }
