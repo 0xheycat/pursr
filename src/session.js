@@ -145,12 +145,12 @@ export class BrowserSessionManager {
 
   get size() { return this.sessions.size; }
 
-  get(sessionId) {
+  get(sessionId, { allowClosing = false } = {}) {
     const session = this.sessions.get(String(sessionId || ""));
     if (!session) throw new Error(`unknown session: ${sessionId}`);
     if (!session.captureHealth) session.captureHealth = createCaptureHealth();
     if (!session.operationTail) session.operationTail = Promise.resolve();
-    if (session.closing) throw new Error(`session is closing: ${sessionId}`);
+    if (session.closing && !allowClosing) throw new Error(`session is closing: ${sessionId}`);
     return session;
   }
 
