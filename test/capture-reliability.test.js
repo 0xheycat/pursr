@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   existsSync,
   mkdtempSync,
+  promises as fsPromises,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -15,6 +16,17 @@ import { BrowserSessionManager } from "../src/session.js";
 
 function pngBuffer(width = 4, height = 3) {
   return PNG.sync.write(new PNG({ width, height }));
+}
+
+function solidPng(width, height, alpha = 255) {
+  const png = new PNG({ width, height });
+  for (let offset = 0; offset < png.data.length; offset += 4) {
+    png.data[offset] = 120;
+    png.data[offset + 1] = 80;
+    png.data[offset + 2] = 40;
+    png.data[offset + 3] = alpha;
+  }
+  return PNG.sync.write(png);
 }
 
 function mockSession(manager, id, { page = {}, context, browser, mode = "headless" } = {}) {
