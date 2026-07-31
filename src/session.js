@@ -428,10 +428,8 @@ export class BrowserSessionManager {
     return { sessionId, ...result };
   }
 
-  async close(sessionId) {
+  async _close(sessionId, session) {
     const id = String(sessionId || "");
-    const session = this.sessions.get(id);
-    if (!session) return { sessionId: id, closed: false };
     this.sessions.delete(id);
     const warnings = [];
     let video = null;
