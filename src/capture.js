@@ -80,6 +80,10 @@ function temporaryPath(file) {
   return join(dirname(file), `.${basename(file)}.tmp-${process.pid}-${randomUUID()}`);
 }
 
+function backupPath(file) {
+  return join(dirname(file), `.${basename(file)}.backup-${process.pid}-${randomUUID()}`);
+}
+
 async function removeTemporary(temp, deadline, { bestEffort = false } = {}) {
   const remove = () => fs.rm(temp, { force: true });
   if (bestEffort && deadline.remaining() <= 0) {
@@ -348,11 +352,71 @@ async function captureFullPageStitched(page, deadline, { timeout, animations }) 
   return { buffer: await encodePng(output, deadline, "stitched PNG encoding"), staged: false };
 }
 
-async function publishCapture({ buffer, staged }, file, temp, deadline) {
-  if (!staged) {
-    await deadline.run("capture artifact write", () => fs.writeFile(temp, buffer));
+async function artifactExists(file, deadline) {
+  return await deadline.run("capture artifact inspection", async () => {
+    try {
+      await fs.stat(file);
+      return true;
+    } catch (error) {
+      if (error?.code === "ENOENT") return false;
+      throw error;
+    }
+  });
+}
+
+async function readArtifactIfPresent(file) {
+  try {
+    return await fs.readFile(file);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
   }
-  await deadline.run("capture artifact publish", () => fs.rename(temp, file));
+}
+
+async function rollbackCommittedCapture({ commitPromise, file, temp, backup, hadExisting, buffer }) {
+  await Promise.resolve(commitPromise).catch(() => {});
+  try {
+    const current = await readArtifactIfPresent(file);
+    const ownsCurrent = Buffer.isBuffer(current) && current.equals(buffer);
+    if (ownsCurrent || (!current && hadExisting)) {
+      if (hadExisting) await fs.copyFile(backup, file);
+      else await fs.rm(file, { force: true });
+    }
+  } finally {
+    await fs.rm(temp, { force: true }).catch(() => {});
+    await fs.rm(backup, { force: true }).catch(() => {});
+  }
+}
+
+function scheduleCaptureRollback(options) {
+  Promise.resolve()
+    .then(() => rollbackCommittedCapture(options))
+    .catch(() => {});
+}
+
+async function publishCapture({ buffer, staged }, file, temp, deadline) {
+  const backup = backupPath(file);
+  let hadExisting = false;
+  let commitPromise = null;
+  try {
+    if (!staged) {
+      await deadline.run("capture artifact write", () => fs.writeFile(temp, buffer));
+    }
+    hadExisting = await artifactExists(file, deadline);
+    if (hadExisting) {
+      await deadline.run("capture artifact backup", () => fs.copyFile(file, backup));
+    }
+    commitPromise = Promise.resolve().then(() => fs.rename(temp, file));
+    await deadline.run("capture artifact publish", () => commitPromise);
+  } catch (error) {
+    if (commitPromise) {
+      scheduleCaptureRollback({ commitPromise, file, temp, backup, hadExisting, buffer });
+    } else {
+      Promise.resolve(fs.rm(backup, { force: true })).catch(() => {});
+    }
+    throw error;
+  }
+  Promise.resolve(fs.rm(backup, { force: true })).catch(() => {});
 }
 
 async function runAttempt(attempts, strategy, operation) {
