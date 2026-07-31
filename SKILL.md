@@ -61,7 +61,7 @@ Expected support target:
 
 - Chrome-compatible browsers first: Google Chrome, Microsoft Edge, Brave, and Chromium.
 - Discovery should cover global installs, user installs, Dev/Beta/Canary/Nightly channels, and executables found in `PATH` across Windows, macOS, and Linux.
-- Use `PURSR_BROWSER_PATH` when discovery misses the executable.
+- Use `PURSR_BROWSER_PATH` when discovery misses the executable. If no system browser is found, Pursr can use a Chromium installed by Playwright as a fallback.
 - Firefox and WebKit are not the primary supported target yet; do not claim full all-browser support unless the implementation has been added and verified.
 - Update notifications are informational only, cached, written to stderr, and disabled by `PURSR_NO_UPDATE_NOTIFIER=1`.
 

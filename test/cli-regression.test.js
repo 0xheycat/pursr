@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { browserTest } from "./browser-fixture.js";
 
 let server;
 let baseUrl;
@@ -53,7 +54,7 @@ after(async () => {
   rmSync(outputDir, { recursive: true, force: true });
 });
 
-test("CLI accepts flags before positionals and honors output paths", { timeout: 120_000 }, async () => {
+browserTest("CLI accepts flags before positionals and honors output paths", { timeout: 120_000 }, async () => {
   const shot = join(outputDir, "nested", "shot.png");
   const shotResult = jsonResult(await runCli(["shot", "--preset", "desktop-1280", baseUrl, "--out", shot]));
   assert.equal(shotResult.out, shot);

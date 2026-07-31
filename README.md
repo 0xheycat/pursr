@@ -59,7 +59,7 @@ pursr viewports                 # list 10+ registered viewport presets
 pursr probe https://example.com # health check
 ```
 
-Pursr intentionally does **not** download browsers during `npm install`. Install Chrome, Edge, Brave, or Chromium yourself, or point Pursr at a Chrome-compatible executable:
+Pursr intentionally does **not** download browsers during `npm install`. Install Chrome, Edge, Brave, or Chromium yourself, or point Pursr at a Chrome-compatible executable. When no system browser is found, Pursr also uses an installed Playwright Chromium as a fallback:
 
 ```bash
 # Windows

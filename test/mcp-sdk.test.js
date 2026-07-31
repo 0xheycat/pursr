@@ -1,4 +1,4 @@
-import { after, before, test } from "node:test";
+import { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { browserTest } from "./browser-fixture.js";
 
 let webServer;
 let baseUrl;
@@ -48,7 +49,7 @@ function textResult(result) {
   return JSON.parse(block.text);
 }
 
-test("official MCP SDK client completes a persistent visual workflow", { timeout: 60_000 }, async () => {
+browserTest("official MCP SDK client completes a persistent visual workflow", { timeout: 60_000 }, async () => {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [process.env.PURSR_MCP_BIN ? resolve(process.env.PURSR_MCP_BIN) : resolve("bin/pursr-mcp.mjs")],

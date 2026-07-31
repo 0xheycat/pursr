@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
+import { browserTest } from "./browser-fixture.js";
 
 // --- unique output dir per test run ---
 const runId = "purr-v-smoke-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
@@ -80,31 +81,31 @@ test("viewports list", async () => {
   assert.ok(r.length >= 10, `expected >=10 viewports, got ${r.length}`);
 });
 
-test("probe returns status 200", async () => {
+browserTest("probe returns status 200", async () => {
   const r = await cli(["probe", `http://localhost:${port}/`]);
   assert.equal(r.status, 200);
   assert.equal(r.title, "pursr smoke");
 });
 
-test("shot captures PNG", async () => {
+browserTest("shot captures PNG", async () => {
   const shotPath = join(out, "shot.png");
   const r = await cli(["shot", `http://localhost:${port}/`, shotPath]);
   assert.equal(r.status, 200);
   assert.ok(existsSync(shotPath), "PNG file should exist");
 });
 
-test("eval returns page data", async () => {
+browserTest("eval returns page data", async () => {
   const r = await cli(["eval", `http://localhost:${port}/`, "document.querySelector('h1').textContent"]);
   assert.equal(r.result, "pursr smoke");
 });
 
-test("click returns clicked:true", async () => {
+browserTest("click returns clicked:true", async () => {
   const r = await cli(["click", `http://localhost:${port}/`, "#go", join(out, "click.png")]);
   assert.equal(r.clicked, true);
   assert.equal(r.selector, "#go");
 });
 
-test("shoot writes sidecar JSON", async () => {
+browserTest("shoot writes sidecar JSON", async () => {
   const shotPath = join(out, "shoot.png");
   const r = await cli(["shoot", `http://localhost:${port}/`, shotPath, "--preset", "desktop-1280"]);
   assert.equal(r.status, 200);
@@ -112,18 +113,18 @@ test("shoot writes sidecar JSON", async () => {
   assert.ok(existsSync(shotPath.replace(/\.png$/, ".json")), "sidecar JSON should exist");
 });
 
-test("shoot error returns error object not throw", async () => {
+browserTest("shoot error returns error object not throw", async () => {
   const r = await cli(["shoot", "http://localhost:1/nonexistent", join(out, "fail.png")]);
   // runShoot returns error instead of throwing now
   assert.ok(r.error || r.status >= 400 || !r.title, "should have error or fail status");
 });
 
-test("spike: single frame capture", async () => {
+browserTest("spike: single frame capture", async () => {
   const r = await cli(["frames", `http://localhost:${port}/`, "3", "50", out]);
   assert.ok(r.files?.length >= 1, "should capture at least 1 frame");
 });
 
-test("persistent session preserves interaction state and returns agent evidence", async () => {
+browserTest("persistent session preserves interaction state and returns agent evidence", async () => {
   const { BrowserSessionManager } = await import("../src/session.js");
   const manager = new BrowserSessionManager({ outputDir: out });
   try {

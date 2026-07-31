@@ -39,11 +39,27 @@ async function getChromium() {
   return resolved.chromium;
 }
 
+export async function resolveBrowserExecutable(options = {}) {
+  if (options.executablePath) return String(options.executablePath);
+  const discovered = findBrowserExecutable(options.discovery);
+  if (discovered) return discovered;
+  try {
+    const chromium = options.chromium || await getChromium();
+    const bundled = typeof chromium.executablePath === "function"
+      ? chromium.executablePath()
+      : null;
+    const exists = options.exists || existsSync;
+    return bundled && exists(bundled) ? bundled : null;
+  } catch {
+    return null;
+  }
+}
+
 const BROWSER_ARGS = Object.freeze(["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]);
 
 export async function launch(options = {}) {
   const chromium = await getChromium();
-  const exec = options.executablePath || findBrowserExecutable();
+  const exec = await resolveBrowserExecutable({ ...options, chromium });
   if (!exec) throw new Error("Chrome-compatible browser not found. Run: pursr doctor");
   return await chromium.launch({
     headless: options.headless !== false,

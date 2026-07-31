@@ -737,7 +737,7 @@ test("stitched strategy without full-page mode rejects with its contract error",
   }
 });
 
-test("timed-out atomic publish restores the previous artifact after a late commit", { timeout: 750 }, async () => {
+test("timed-out atomic publish restores the previous artifact after a late commit", { timeout: 2_000 }, async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "pursr-late-publish-"));
   const file = join(outputDir, "stable.png");
   const original = solidPng(3, 3);
@@ -753,7 +753,7 @@ test("timed-out atomic publish restores the previous artifact after a late commi
     renameCalls += 1;
     if (renameCalls === 1) {
       await originalRename(...args);
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      await new Promise((resolve) => setTimeout(resolve, 700));
       return;
     }
     return await originalRename(...args);
@@ -764,11 +764,11 @@ test("timed-out atomic publish restores the previous artifact after a late commi
       manager.screenshot("late-publish", {
         out: file,
         strategy: "playwright",
-        timeoutMs: 25,
+        timeoutMs: 250,
       }),
       /publish.*deadline|deadline.*publish/i,
     );
-    await new Promise((resolve) => setTimeout(resolve, 140));
+    await new Promise((resolve) => setTimeout(resolve, 800));
     assert.deepEqual(readFileSync(file), original, "late commit must restore the previous valid artifact");
     assert.equal(
       readdirSync(outputDir).some((name) => name.includes(".tmp-") || name.includes(".backup-")),
