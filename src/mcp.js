@@ -221,7 +221,7 @@ class PursrMCPServer {
       },
       {
         name: "pursr_screenshot",
-        description: "Capture the current persistent session and return validated PNG image content plus structured recovery evidence. Auto adapts between Playwright and CDP for viewport, full-page, and selector capture; stitched capture is full-page only. Every stage shares one total deadline.",
+        description: "Capture the current persistent session and return validated PNG image content plus structured recovery evidence. Auto adapts between Playwright and CDP for viewport, full-page, and selector capture with bounded clip recovery; stitched capture is full-page only. Every stage shares one total deadline.",
         inputSchema: {
           type: "object",
           properties: {
