@@ -221,14 +221,14 @@ class PursrMCPServer {
       },
       {
         name: "pursr_screenshot",
-        description: "Capture the current persistent session and return PNG image content plus structured recovery evidence. Selector capture retains bounded clip recovery, while auto strategy adapts between Playwright, CDP, and stitched full-page capture within one total deadline.",
+        description: "Capture the current persistent session and return validated PNG image content plus structured recovery evidence. Auto adapts between Playwright and CDP for viewport, full-page, and selector capture; stitched capture is full-page only. Every stage shares one total deadline.",
         inputSchema: {
           type: "object",
           properties: {
             sessionId: { type: "string" }, out: { type: "string" }, full: { type: "boolean" },
             selector: { type: "string", description: "Capture only the first matching element" },
             timeoutMs: { type: "number", minimum: 0, description: "Total capture operation deadline shared by all strategies and artifact publishing." },
-            strategy: { type: "string", enum: ["auto", "playwright", "cdp", "stitched"], description: "Caller-controlled capture strategy. Auto adapts from observed per-session health." },
+            strategy: { type: "string", enum: ["auto", "playwright", "cdp", "stitched"], description: "Caller-controlled capture strategy. Auto adapts from observed per-session health. Stitched requires full=true and cannot be combined with selector." },
             animations: { type: "string", enum: ["auto", "allow", "disabled"], description: "Animation handling. Auto preserves the current disabled default." },
           },
           required: ["sessionId"],
