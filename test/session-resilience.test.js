@@ -10,7 +10,7 @@ import { BrowserSessionManager } from "../src/session.js";
 function mockSession(manager, id, overrides = {}) {
   const page = {
     url: () => "http://127.0.0.1:3000/game",
-    title: async () => "PurrFarm",
+    title: async () => "Visual Test Fixture",
     ...overrides.page,
   };
   manager.sessions.set(id, {
@@ -197,9 +197,15 @@ test("selector screenshot falls back to bounded CDP clipping when locator stabil
 
     assert.equal(result.captureMode, "cdp-clip-fallback");
     assert.match(result.fallbackError, /waiting for element to be stable/i);
-    assert.deepEqual(calls, [
-      ["locatorScreenshot", { path: file, timeout: 250, animations: "disabled" }],
-      ["waitFor", { state: "visible", timeout: 250 }],
+    assert.equal(calls[0][0], "locatorScreenshot");
+    assert.match(calls[0][1].path, /\.modal\.png\.tmp-/);
+    assert.notEqual(calls[0][1].path, file);
+    assert.ok(calls[0][1].timeout > 0 && calls[0][1].timeout <= 250);
+    assert.equal(calls[0][1].animations, "disabled");
+    assert.equal(calls[1][0], "waitFor");
+    assert.equal(calls[1][1].state, "visible");
+    assert.ok(calls[1][1].timeout > 0 && calls[1][1].timeout <= 250);
+    assert.deepEqual(calls.slice(2), [
       ["newCDPSession"],
       ["cdpSend", "Page.captureScreenshot", {
         format: "png",
@@ -258,10 +264,12 @@ test("viewport screenshot falls back to CDP when Playwright capture times out", 
     assert.match(result.fallbackError, /waiting for fonts to load/i);
     const decoded = PNG.sync.read(readFileSync(file));
     assert.deepEqual({ width: decoded.width, height: decoded.height }, { width: 3, height: 2 });
-    assert.deepEqual(calls[0], [
-      "pageScreenshot",
-      { path: file, fullPage: false, timeout: 250, animations: "disabled" },
-    ]);
+    assert.equal(calls[0][0], "pageScreenshot");
+    assert.match(calls[0][1].path, /\.viewport\.png\.tmp-/);
+    assert.notEqual(calls[0][1].path, file);
+    assert.equal(calls[0][1].fullPage, false);
+    assert.ok(calls[0][1].timeout > 0 && calls[0][1].timeout <= 250);
+    assert.equal(calls[0][1].animations, "disabled");
     const capture = calls.find((call) => call[0] === "cdpSend" && call[1] === "Page.captureScreenshot");
     assert.ok(capture, "viewport fallback should invoke Page.captureScreenshot");
     assert.equal(capture[2].captureBeyondViewport, false);
@@ -318,13 +326,18 @@ test("full-page screenshot falls back to CDP when Playwright capture times out",
     assert.match(result.fallbackError, /waiting for fonts to load/i);
     const decoded = PNG.sync.read(readFileSync(file));
     assert.deepEqual({ width: decoded.width, height: decoded.height }, { width: 4, height: 6 });
-    assert.deepEqual(calls[0], [
-      "pageScreenshot",
-      { path: file, fullPage: true, timeout: 250, animations: "disabled" },
-    ]);
+    assert.equal(calls[0][0], "pageScreenshot");
+    assert.match(calls[0][1].path, /\.full-page\.png\.tmp-/);
+    assert.notEqual(calls[0][1].path, file);
+    assert.equal(calls[0][1].fullPage, true);
+    assert.ok(calls[0][1].timeout > 0 && calls[0][1].timeout <= 250);
+    assert.equal(calls[0][1].animations, "disabled");
     const capture = calls.find((call) => call[0] === "cdpSend" && call[1] === "Page.captureScreenshot");
     assert.ok(capture, "full-page fallback should invoke Page.captureScreenshot");
     assert.equal(capture[2].captureBeyondViewport, true);
+    assert.deepEqual(capture[2].clip, {
+      x: 0, y: 0, width: 1440, height: 3200, scale: 1,
+    });
     assert.deepEqual(calls.at(-1), ["cdpDetach"]);
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
