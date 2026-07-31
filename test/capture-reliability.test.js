@@ -685,3 +685,98 @@ test("selector capture rejects stitched strategy explicitly", async () => {
     rmSync(outputDir, { recursive: true, force: true });
   }
 });
+
+test("selector CDP preparation failure preserves its actionable root cause", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-selector-cdp-error-"));
+  const target = {
+    first() { return this; },
+    waitFor: async () => { throw new Error("selector never became visible"); },
+    boundingBox: async () => null,
+  };
+  const manager = new BrowserSessionManager({ outputDir });
+  const context = cdpContext(async () => ({}));
+  const page = mockSession(manager, "selector-cdp-error", {
+    context,
+    page: { locator: () => target },
+  });
+  page.context = () => context;
+
+  try {
+    let failure;
+    try {
+      await manager.screenshot("selector-cdp-error", {
+        selector: "#missing",
+        strategy: "cdp",
+        timeoutMs: 100,
+      });
+    } catch (error) { failure = error; }
+    assert.ok(failure);
+    assert.match(failure.message, /selector never became visible/i);
+    assert.deepEqual(failure.attempts.map((attempt) => attempt.strategy), ["cdp"]);
+    assert.match(failure.attempts[0].error, /selector never became visible/i);
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("stitched strategy without full-page mode rejects with its contract error", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-stitched-requires-full-"));
+  const manager = new BrowserSessionManager({ outputDir });
+  mockSession(manager, "stitched-requires-full");
+
+  try {
+    await assert.rejects(
+      manager.screenshot("stitched-requires-full", {
+        strategy: "stitched",
+        timeoutMs: 100,
+      }),
+      /stitched.*requires.*full/i,
+    );
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("timed-out atomic publish restores the previous artifact after a late commit", { timeout: 750 }, async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-late-publish-"));
+  const file = join(outputDir, "stable.png");
+  const original = solidPng(3, 3);
+  const replacement = solidPng(4, 2);
+  writeFileSync(file, original);
+  const manager = new BrowserSessionManager({ outputDir });
+  mockSession(manager, "late-publish", {
+    page: { screenshot: async () => replacement },
+  });
+  const originalRename = fsPromises.rename;
+  let renameCalls = 0;
+  fsPromises.rename = async (...args) => {
+    renameCalls += 1;
+    if (renameCalls === 1) {
+      await originalRename(...args);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return;
+    }
+    return await originalRename(...args);
+  };
+
+  try {
+    await assert.rejects(
+      manager.screenshot("late-publish", {
+        out: file,
+        strategy: "playwright",
+        timeoutMs: 25,
+      }),
+      /publish.*deadline|deadline.*publish/i,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    assert.deepEqual(readFileSync(file), original, "late commit must restore the previous valid artifact");
+    assert.equal(
+      readdirSync(outputDir).some((name) => name.includes(".tmp-") || name.includes(".backup-")),
+      false,
+      "late commit rollback must not leave transaction files",
+    );
+  } finally {
+    fsPromises.rename = originalRename;
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
