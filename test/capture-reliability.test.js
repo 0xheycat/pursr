@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   promises as fsPromises,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
