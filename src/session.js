@@ -208,8 +208,8 @@ export class BrowserSessionManager {
     }
   }
 
-  async snapshot(sessionId, { selector = "body", maxNodes = 250, includeStyles = true } = {}) {
-    const { page } = this.get(sessionId);
+  async _snapshot(sessionId, { selector = "body", maxNodes = 250, includeStyles = true } = {}) {
+    const { page } = this.get(sessionId, { allowClosing: true });
     const limit = Math.max(1, Math.min(1000, Number(maxNodes) || 250));
     return await page.evaluate(({ selector, limit, includeStyles }) => {
       const roots = [...document.querySelectorAll(selector)];
@@ -239,6 +239,10 @@ export class BrowserSessionManager {
       }
       return { url: location.href, title: document.title, selector, truncated: elements.length > limit, nodes };
     }, { selector, limit, includeStyles: includeStyles !== false });
+  }
+
+  async snapshot(sessionId, options = {}) {
+    return await this._enqueue(sessionId, () => this._snapshot(sessionId, options));
   }
 
   async inspect(sessionId, selector) {
