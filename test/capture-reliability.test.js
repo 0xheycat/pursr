@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { PNG } from "pngjs";
 import { PursrMCPServer } from "../src/mcp.js";
 import { BrowserSessionManager } from "../src/session.js";
@@ -232,6 +232,34 @@ test("explicit CDP strategy skips Playwright without removing caller control", a
     const result = await manager.screenshot("force-cdp", { strategy: "cdp", timeoutMs: 500 });
     assert.equal(playwrightCalls, 0);
     assert.equal(result.attempts[0].strategy, "cdp");
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("Playwright capture stages through a PNG-suffixed temporary path", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-capture-playwright-png-"));
+  const file = join(outputDir, "capture.png");
+  const bytes = pngBuffer(6, 4);
+  const manager = new BrowserSessionManager({ outputDir });
+  mockSession(manager, "force-playwright", {
+    page: {
+      screenshot: async ({ path }) => {
+        if (extname(path) !== ".png") throw new Error('path: unsupported mime type "null"');
+        writeFileSync(path, bytes);
+        return bytes;
+      },
+    },
+  });
+
+  try {
+    const result = await manager.screenshot("force-playwright", {
+      out: file,
+      strategy: "playwright",
+      timeoutMs: 500,
+    });
+    assert.equal(result.captureMode, "viewport");
+    assert.deepEqual(readFileSync(file), bytes);
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
   }
