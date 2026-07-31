@@ -311,7 +311,9 @@ test("different browser sessions remain concurrent", async () => {
       manager.screenshot("one", { timeoutMs: 200 }),
       manager.screenshot("two", { timeoutMs: 200 }),
     ];
-    await new Promise((resolve) => setImmediate(resolve));
+    for (let attempt = 0; attempt < 20 && started.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
     assert.deepEqual(new Set(started), new Set(["one", "two"]));
     release();
     await Promise.all(captures);
