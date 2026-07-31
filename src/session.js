@@ -260,7 +260,7 @@ export class BrowserSessionManager {
     });
   }
 
-  async act(sessionId, actions = []) {
+  async _act(sessionId, actions = []) {
     if (!Array.isArray(actions) || !actions.length) throw new Error("actions must be a non-empty array");
     if (actions.length > MAX_ACTIONS) throw new Error(`actions cannot exceed ${MAX_ACTIONS}`);
     const session = this.get(sessionId);
@@ -379,13 +379,33 @@ export class BrowserSessionManager {
     return { sessionId, url: page.url(), title: await page.title(), trace, failed: trace.some((step) => !step.ok) };
   }
 
+  async act(sessionId, actions = []) {
+    return await this._enqueue(sessionId, () => this._act(sessionId, actions));
+  }
+
+  async _screenshot(sessionId, options = {}) {
+    const session = this.get(sessionId);
+    const preferredStrategy = (!options.strategy || options.strategy === "auto")
+      && session.captureHealth.playwright.status === "degraded"
+      ? "cdp"
+      : undefined;
+    try {
+      const result = await captureScreenshot(session.page, {
+        ...options,
+        preferredStrategy,
+        outputDir: this.outputDir,
+        sessionId,
+      });
+      updateCaptureHealth(session, result);
+      return result;
+    } catch (error) {
+      updateCaptureHealth(session, error);
+      throw error;
+    }
+  }
+
   async screenshot(sessionId, options = {}) {
-    const { page } = this.get(sessionId);
-    return await captureScreenshot(page, {
-      ...options,
-      outputDir: this.outputDir,
-      sessionId,
-    });
+    return await this._enqueue(sessionId, () => this._screenshot(sessionId, options));
   }
 
   diagnostics(sessionId, { clear = false } = {}) {
