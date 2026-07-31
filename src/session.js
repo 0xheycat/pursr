@@ -148,7 +148,22 @@ export class BrowserSessionManager {
   get(sessionId) {
     const session = this.sessions.get(String(sessionId || ""));
     if (!session) throw new Error(`unknown session: ${sessionId}`);
+    if (!session.captureHealth) session.captureHealth = createCaptureHealth();
+    if (!session.operationTail) session.operationTail = Promise.resolve();
+    if (session.closing) throw new Error(`session is closing: ${sessionId}`);
     return session;
+  }
+
+  _enqueueSession(session, operation) {
+    const previous = session.operationTail || Promise.resolve();
+    const task = previous.catch(() => {}).then(operation);
+    session.operationTail = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  _enqueue(sessionId, operation) {
+    const session = this.get(sessionId);
+    return this._enqueueSession(session, () => operation(session));
   }
 
   list() {
