@@ -446,17 +446,22 @@ async function captureSelectorFlow({
         ));
         captureMode = "locator";
       } else {
-        clip ||= await resolveSelectorClip(target, deadline, timeout);
         if (current === "cdp") {
-          captured = await runAttempt(attempts, "cdp", () => captureSelectorWithCdp(page, clip, deadline));
+          captured = await runAttempt(attempts, "cdp", async () => {
+            clip ||= await resolveSelectorClip(target, deadline, timeout);
+            return await captureSelectorWithCdp(page, clip, deadline);
+          });
           captureMode = attempts.length > 1 ? "cdp-clip-fallback" : "cdp-clip";
         } else {
-          captured = await runAttempt(attempts, "playwright-clip", () => capturePlaywright(
-            page,
-            temp,
-            { clip, timeout, animations: animationPolicy },
-            deadline,
-          ));
+          captured = await runAttempt(attempts, "playwright-clip", async () => {
+            clip ||= await resolveSelectorClip(target, deadline, timeout);
+            return await capturePlaywright(
+              page,
+              temp,
+              { clip, timeout, animations: animationPolicy },
+              deadline,
+            );
+          });
           captureMode = "clip-fallback";
         }
       }
@@ -547,6 +552,9 @@ export async function captureScreenshot(page, {
   const animationPolicy = normalizedAnimations(animations);
   if (selector && requestedStrategy === "stitched") {
     throw new Error("stitched strategy is not available for selector capture");
+  }
+  if (requestedStrategy === "stitched" && !full) {
+    throw new Error("stitched strategy requires full=true");
   }
 
   const file = out || join(outputDir, `pursr-${sessionId}-${Date.now()}.png`);
