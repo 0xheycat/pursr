@@ -221,7 +221,7 @@ class PursrMCPServer {
       },
       {
         name: "pursr_screenshot",
-        description: "Capture the current persistent session and return PNG image content plus structured recovery evidence. Auto strategy adapts between Playwright, CDP, and stitched full-page capture within one total deadline.",
+        description: "Capture the current persistent session and return PNG image content plus structured recovery evidence. Selector capture retains bounded clip recovery, while auto strategy adapts between Playwright, CDP, and stitched full-page capture within one total deadline.",
         inputSchema: {
           type: "object",
           properties: {
