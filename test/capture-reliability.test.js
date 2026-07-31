@@ -321,6 +321,109 @@ test("different browser sessions remain concurrent", async () => {
     release?.();
     rmSync(outputDir, { recursive: true, force: true });
   }
+
+test("close waits for an active same-session capture before releasing browser resources", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-capture-close-queue-"));
+  const bytes = pngBuffer(4, 3);
+  const events = [];
+  const manager = new BrowserSessionManager({ outputDir, closeTimeoutMs: 200 });
+  mockSession(manager, "close-queue", {
+    context: { close: async () => events.push("context-close") },
+    browser: { close: async () => events.push("browser-close") },
+    page: {
+      screenshot: async ({ path }) => {
+        events.push("capture-start");
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        writeFileSync(path, bytes);
+        events.push("capture-end");
+      },
+    },
+  });
+
+  try {
+    const capture = manager.screenshot("close-queue", { timeoutMs: 200 });
+    for (let attempt = 0; attempt < 20 && !events.includes("capture-start"); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const closing = manager.close("close-queue");
+    const [, result] = await Promise.all([capture, closing]);
+
+    assert.equal(result.closed, true);
+    assert.equal(manager.size, 0);
+    assert.deepEqual(events, [
+      "capture-start",
+      "capture-end",
+      "context-close",
+      "browser-close",
+    ]);
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("snapshot and inspect share the same-session queue with capture", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-capture-read-queue-"));
+  const bytes = pngBuffer(4, 3);
+  const events = [];
+  let captureIndex = 0;
+  const manager = new BrowserSessionManager({ outputDir });
+  const locator = {
+    first() { return this; },
+    waitFor: async () => {},
+    evaluate: async () => {
+      events.push("inspect");
+      return {
+        tag: "div",
+        html: "<div id=target></div>",
+        rect: { x: 0, y: 0, width: 10, height: 10 },
+        computedStyle: {},
+        ancestors: [],
+      };
+    },
+  };
+  mockSession(manager, "read-queue", {
+    page: {
+      locator: () => locator,
+      screenshot: async ({ path }) => {
+        captureIndex += 1;
+        const label = `capture-${captureIndex}`;
+        events.push(`${label}-start`);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        writeFileSync(path, bytes);
+        events.push(`${label}-end`);
+      },
+      evaluate: async (_fn, payload) => {
+        if (payload?.selector) {
+          events.push("snapshot");
+          return { url: "http://127.0.0.1/read-queue", title: "fixture", selector: payload.selector, truncated: false, nodes: [] };
+        }
+        throw new Error("unexpected page evaluation");
+      },
+    },
+  });
+
+  try {
+    await Promise.all([
+      manager.screenshot("read-queue", { timeoutMs: 200 }),
+      manager.snapshot("read-queue", { selector: "body" }),
+    ]);
+    await Promise.all([
+      manager.screenshot("read-queue", { timeoutMs: 200 }),
+      manager.inspect("read-queue", "#target"),
+    ]);
+
+    assert.deepEqual(events, [
+      "capture-1-start",
+      "capture-1-end",
+      "snapshot",
+      "capture-2-start",
+      "capture-2-end",
+      "inspect",
+    ]);
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
 });
 
 test("full-page capture reaches a stitched fallback when compositor capture fails", async () => {
