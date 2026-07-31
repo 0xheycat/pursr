@@ -445,6 +445,19 @@ export class BrowserSessionManager {
     return { sessionId: id, closed: true, video, warnings };
   }
 
+  async close(sessionId) {
+    const id = String(sessionId || "");
+    const session = this.sessions.get(id);
+    if (!session) return { sessionId: id, closed: false };
+    if (session.closePromise) return await session.closePromise;
+    if (!session.captureHealth) session.captureHealth = createCaptureHealth();
+    if (!session.operationTail) session.operationTail = Promise.resolve();
+    session.closing = true;
+    const closing = this._enqueueSession(session, () => this._close(id, session));
+    session.closePromise = closing;
+    return await closing;
+  }
+
   async closeAll() {
     await Promise.all([...this.sessions.keys()].map((id) => this.close(id)));
   }
