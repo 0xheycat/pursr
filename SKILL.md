@@ -140,7 +140,7 @@ Common actions:
 Recommended MCP behavior:
 
 - Keep one persistent session per task.
-- Prefer snapshots for target discovery and screenshots for visual judgment. Read `captureMode` and `fallbackError`; viewport and full-page captures automatically retry through CDP when Playwright capture fails.
+- Prefer snapshots for target discovery and validated screenshots for visual judgment. Read `captureMode`, `attempts`, and `fallbackError`; `auto` adapts selector, viewport, and full-page capture from per-session health and periodically re-probes Playwright. Use `stitched` only for full-page capture.
 - Use `pursr_inspect` when the issue is position, z-index, clipping, opacity, transform, or layout.
 - Use `pursr_act` for small verified action batches, not long blind scripts.
 - Eval actions require non-empty `js`; do not use the legacy `script` field.
