@@ -229,7 +229,7 @@ npx pursr-mcp --verbose
 | `pursr_sessions` | List active browser sessions |
 | `pursr_snapshot` | Visible rendered nodes, geometry, semantics, and computed styles |
 | `pursr_act` | Interact with per-action timeouts, caller-controlled force fallback, strict `eval.js`, cursor movement, and annotations |
-| `pursr_screenshot` | Return the current PNG directly to the vision model, with selector, viewport, and full-page CDP recovery plus capture metadata |
+| `pursr_screenshot` | Return a validated PNG directly to the vision model, with adaptive selector/viewport/full-page recovery, two-dimensional stitching, and capture metadata |
 | `pursr_inspect` | Inspect exact geometry, computed styles, and stacking ancestors |
 | `pursr_diagnostics` | Read console, page errors, failed requests, and HTTP failures |
 | `pursr_session_close` | Close the tab and release its browser process |
@@ -249,7 +249,7 @@ Use persistent sessions for the same inspect-act-verify loop as an interactive b
 1. Call `pursr_session_open` once with a stable `sessionId`.
 2. Call `pursr_snapshot` to understand the rendered page before acting.
 3. Use `pursr_act` for a small, ordered interaction sequence.
-4. Call `pursr_screenshot` when visual judgment matters; the model receives the PNG directly. Read `captureMode` and `fallbackError` to distinguish normal Playwright capture from automatic CDP recovery.
+4. Call `pursr_screenshot` when visual judgment matters; the model receives the validated PNG directly. `auto` remembers degraded Playwright capture per session, uses CDP without repeating the same timeout, and periodically re-probes Playwright. Read `captureMode`, `attempts`, and `fallbackError`; use `stitched` only with full-page capture.
 5. Use `pursr_inspect` for layout, clipping, typography, or stacking problems.
 6. Read `pursr_diagnostics`, then reload and verify after source changes.
 7. Call `pursr_session_close` when the review is complete.
@@ -583,11 +583,11 @@ npm install --save-dev playwright-core
 npm test
 ```
 
-`npm test` runs 63 unit + integration tests (Node's built-in test runner, zero test deps). Coverage includes: viewport resolution, flag parsing, selector parsing, HTML escaping, hashing, baseline storage, sweep-plan validation, MCP resources, HAR 1.2 shape, auth state, and end-to-end CLI smoke tests.
+`npm test` runs the full unit and integration suite with Node's built-in test runner. Coverage includes viewport resolution, flag parsing, selector parsing, browser-session serialization, adaptive capture recovery, transactional PNG validation, two-dimensional full-page stitching, MCP transport, CLI behavior, baselines, sweep-plan validation, resources, HAR shape, auth state, and end-to-end smoke tests.
 
 ```
-src/           - 29 modules
-test/          - 63 tests, 0 failures
+src/           - library, CLI, MCP, browser-session, and capture modules
+test/          - unit, integration, CLI, MCP, browser, and reliability tests
 plugins/       - 2 built-in plugins, auto-loaded
 ```
 
