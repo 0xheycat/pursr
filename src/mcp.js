@@ -221,13 +221,15 @@ class PursrMCPServer {
       },
       {
         name: "pursr_screenshot",
-        description: "Capture the current persistent session and return the PNG directly to the model as image content. Selector capture retains bounded CDP clip recovery, while viewport and full-page capture automatically retry through CDP when Playwright cannot finish the screenshot.",
+        description: "Capture the current persistent session and return PNG image content plus structured recovery evidence. Auto strategy adapts between Playwright, CDP, and stitched full-page capture within one total deadline.",
         inputSchema: {
           type: "object",
           properties: {
             sessionId: { type: "string" }, out: { type: "string" }, full: { type: "boolean" },
             selector: { type: "string", description: "Capture only the first matching element" },
-            timeoutMs: { type: "number", minimum: 0, description: "Playwright capture timeout before automatic CDP recovery." },
+            timeoutMs: { type: "number", minimum: 0, description: "Total capture operation deadline shared by all strategies and artifact publishing." },
+            strategy: { type: "string", enum: ["auto", "playwright", "cdp", "stitched"], description: "Caller-controlled capture strategy. Auto adapts from observed per-session health." },
+            animations: { type: "string", enum: ["auto", "allow", "disabled"], description: "Animation handling. Auto preserves the current disabled default." },
           },
           required: ["sessionId"],
         },
@@ -457,14 +459,16 @@ class PursrMCPServer {
 
   async _sessionScreenshot(args) {
     const result = await this.sessions.screenshot(this._requireSessionId(args), args);
+    const { data, mimeType, ...metadata } = result;
     recordResource({
       kind: "session", id: args.sessionId, name: `session screenshot: ${args.sessionId}`,
       description: result.url, uri: `pursr://session/${encodeURIComponent(args.sessionId)}`,
-      mimeType: result.mimeType, file: result.out, meta: { url: result.url, ts: nowIso() },
+      mimeType, file: result.out,
+      meta: { url: result.url, captureMode: result.captureMode, fallbackUsed: result.fallbackUsed, ts: nowIso() },
     });
     return [
-      { type: "text", text: JSON.stringify({ sessionId: result.sessionId, out: result.out, url: result.url }, null, 2) },
-      { type: "image", data: result.data, mimeType: result.mimeType },
+      { type: "text", text: JSON.stringify(metadata, null, 2) },
+      { type: "image", data, mimeType },
     ];
   }
 
