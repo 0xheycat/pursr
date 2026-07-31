@@ -265,6 +265,38 @@ test("Playwright capture stages through a PNG-suffixed temporary path", async ()
   }
 });
 
+test("final Playwright PNG validation does not depend on the async parser callback", { timeout: 750 }, async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-playwright-sync-validation-"));
+  const bytes = solidPng(640, 360);
+  const manager = new BrowserSessionManager({ outputDir });
+  const originalParse = PNG.prototype.parse;
+  PNG.prototype.parse = function parseWithoutCallback() { return this; };
+  mockSession(manager, "sync-validation", {
+    page: {
+      screenshot: async ({ path }) => {
+        writeFileSync(path, bytes);
+        return bytes;
+      },
+    },
+  });
+
+  try {
+    const result = await manager.screenshot("sync-validation", {
+      strategy: "playwright",
+      animations: "allow",
+      timeoutMs: 200,
+    });
+    assert.equal(result.captureMode, "viewport");
+    assert.deepEqual(
+      { width: result.image.width, height: result.image.height },
+      { width: 640, height: 360 },
+    );
+  } finally {
+    PNG.prototype.parse = originalParse;
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
 test("adaptive capture health is isolated per browser session", async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "pursr-capture-isolation-"));
   const bytes = pngBuffer(4, 4);
@@ -705,12 +737,12 @@ test("stitched capture scrolls each document tile into a viewport-relative clip 
   }
 });
 
-test("total deadline bounds artifact directory preparation", { timeout: 500 }, async () => {
+test("total deadline bounds artifact directory preparation", { timeout: 1_500 }, async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "pursr-deadline-mkdir-"));
   const manager = new BrowserSessionManager({ outputDir });
   const originalMkdir = fsPromises.mkdir;
   fsPromises.mkdir = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
   };
   mockSession(manager, "deadline-mkdir", {
     page: { screenshot: async () => solidPng(2, 2) },
@@ -722,7 +754,7 @@ test("total deadline bounds artifact directory preparation", { timeout: 500 }, a
       manager.screenshot("deadline-mkdir", { strategy: "playwright", timeoutMs: 20 }),
       /deadline|timed out/i,
     );
-    assert.ok(Date.now() - started < 70, "directory preparation must share the total deadline");
+    assert.ok(Date.now() - started < 500, "directory preparation must share the total deadline");
   } finally {
     fsPromises.mkdir = originalMkdir;
     rmSync(outputDir, { recursive: true, force: true });

@@ -34,7 +34,11 @@ test("MCP action schema exposes timeout, force, and selector screenshot recovery
   const screenshot = tools.find((tool) => tool.name === "pursr_screenshot");
   const actionProperties = act.inputSchema.properties.actions.items.properties;
 
+  assert.equal(act.inputSchema.properties.timeoutMs.type, "number");
+  assert.match(act.inputSchema.properties.timeoutMs.description, /eval actions are bounded/i);
   assert.equal(actionProperties.timeoutMs.type, "number");
+  assert.equal(actionProperties.url.type, "string");
+  assert.match(actionProperties.url.description, /navigate actions/i);
   assert.equal(actionProperties.force.type, "boolean");
   assert.match(actionProperties.force.description, /never enabled automatically/i);
   assert.equal(screenshot.inputSchema.properties.timeoutMs.type, "number");
@@ -65,6 +69,27 @@ test("selector actions forward explicit timeout and force instead of using hidde
     ["waitFor", { state: "attached", timeout: 4321 }],
     ["click", { timeout: 4321, force: true }],
   ]);
+});
+
+test("eval actions return a bounded failure instead of holding the MCP transport", { timeout: 750 }, async () => {
+  const manager = new BrowserSessionManager();
+  mockSession(manager, "bounded-eval", {
+    page: {
+      evaluate: async () => await new Promise(() => {}),
+    },
+  });
+
+  const started = Date.now();
+  const result = await manager.act(
+    "bounded-eval",
+    [{ type: "eval", js: "new Promise(() => {})" }],
+    { timeoutMs: 40 },
+  );
+  const elapsed = Date.now() - started;
+
+  assert.equal(result.failed, true);
+  assert.match(result.trace[0].error, /eval action timed out after 40ms/i);
+  assert.ok(elapsed < 300, `bounded eval should settle before transport timeout, took ${elapsed}ms`);
 });
 
 test("explicit force falls back to DOM dispatch when Playwright cannot settle a visible selector", async () => {

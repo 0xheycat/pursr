@@ -188,11 +188,16 @@ class PursrMCPServer {
       },
       {
         name: "pursr_act",
-        description: "Perform ordered actions in a persistent session. Supports selector or coordinate click/doubleClick, drag, hover, fill, type, check, select, press, keyDown, keyUp, scroll, wait, sleep, navigate, reload, eval, move, annotate, and clearAnnotations. Selector actions honor timeoutMs and accept force=true only when the caller explicitly requests Playwright's actionability bypass.",
+        description: "Perform ordered actions in a persistent session. Supports selector or coordinate click/doubleClick, drag, hover, fill, type, check, select, press, keyDown, keyUp, scroll, wait, sleep, navigate, reload, eval, move, annotate, and clearAnnotations. Navigate actions require url. A top-level timeoutMs bounds actions that do not set their own deadline, including eval, so one page action cannot hold the MCP transport indefinitely. Selector actions accept force=true only when the caller explicitly requests Playwright's actionability bypass.",
         inputSchema: {
           type: "object",
           properties: {
             sessionId: { type: "string" },
+            timeoutMs: {
+              type: "number",
+              minimum: 0,
+              description: "Default per-action deadline for actions that omit timeoutMs. Eval actions are bounded by this deadline.",
+            },
             actions: {
               type: "array",
               minItems: 1,
@@ -203,7 +208,8 @@ class PursrMCPServer {
                   type: { type: "string", description: "Action type." },
                   op: { type: "string", description: "Alias for type." },
                   selector: { type: "string", description: "CSS, text, role, label, placeholder, test-id, or xpath selector supported by Pursr." },
-                  timeoutMs: { type: "number", minimum: 0, description: "Per-action timeout forwarded to Playwright." },
+                  url: { type: "string", description: "Required target URL for navigate actions." },
+                  timeoutMs: { type: "number", minimum: 0, description: "Per-action timeout; overrides the top-level timeoutMs." },
                   force: { type: "boolean", description: "Explicitly bypass Playwright actionability checks for selector actions. Never enabled automatically." },
                   text: { type: "string" },
                   value: {},
@@ -453,7 +459,11 @@ class PursrMCPServer {
   }
 
   async _sessionAct(args) {
-    const result = await this.sessions.act(this._requireSessionId(args), args.actions);
+    const result = await this.sessions.act(
+      this._requireSessionId(args),
+      args.actions,
+      { timeoutMs: args.timeoutMs },
+    );
     return this._text(result);
   }
 
