@@ -245,9 +245,9 @@ export class BrowserSessionManager {
     return await this._enqueue(sessionId, () => this._snapshot(sessionId, options));
   }
 
-  async inspect(sessionId, selector) {
+  async _inspect(sessionId, selector) {
     if (!selector) throw new Error("selector is required");
-    const { page } = this.get(sessionId);
+    const { page } = this.get(sessionId, { allowClosing: true });
     const locator = await resolveLocator(page, selector);
     await locator.first().waitFor({ state: "attached", timeout: CLICK_TIMEOUT_MS });
     return await locator.first().evaluate((el) => {
@@ -262,6 +262,10 @@ export class BrowserSessionManager {
       for (const key of ["display","position","inset","width","height","margin","padding","gap","overflow","opacity","visibility","zIndex","transform","transformOrigin","color","background","border","borderRadius","boxShadow","fontFamily","fontSize","fontWeight","lineHeight","textAlign","objectFit","pointerEvents"]) computedStyle[key] = style[key];
       return { tag: el.tagName.toLowerCase(), html: el.outerHTML.slice(0, 2000), rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, computedStyle, ancestors };
     });
+  }
+
+  async inspect(sessionId, selector) {
+    return await this._enqueue(sessionId, () => this._inspect(sessionId, selector));
   }
 
   async _act(sessionId, actions = []) {
