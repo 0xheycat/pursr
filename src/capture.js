@@ -349,12 +349,10 @@ async function captureFullPageStitched(page, deadline, { timeout, animations }) 
 }
 
 async function publishCapture({ buffer, staged }, file, temp, deadline) {
-  const image = await inspectPng(buffer, deadline);
   if (!staged) {
     await deadline.run("capture artifact write", () => fs.writeFile(temp, buffer));
   }
   await deadline.run("capture artifact publish", () => fs.rename(temp, file));
-  return image;
 }
 
 async function runAttempt(attempts, strategy, operation) {
@@ -583,8 +581,11 @@ export async function captureScreenshot(page, {
 
     if (!flow.captured) throw captureFailure(attempts);
     let image;
+    let data;
     try {
-      image = await publishCapture(flow.captured, file, temp, deadline);
+      image = await inspectPng(flow.captured.buffer, deadline);
+      data = await encodeBase64(flow.captured.buffer, deadline);
+      await publishCapture(flow.captured, file, temp, deadline);
     } catch (error) {
       const success = [...attempts].reverse().find((attempt) => attempt.status === "success");
       if (success) {
@@ -595,7 +596,6 @@ export async function captureScreenshot(page, {
       throw captureFailure(attempts);
     }
 
-    const data = await encodeBase64(flow.captured.buffer, deadline);
     return {
       sessionId,
       out: file,
