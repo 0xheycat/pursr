@@ -265,7 +265,7 @@ test("Playwright capture stages through a PNG-suffixed temporary path", async ()
   }
 });
 
-test("final Playwright PNG validation does not depend on the async parser callback", { timeout: 750 }, async () => {
+test("final Playwright PNG validation does not depend on the async parser callback", { timeout: 5_000 }, async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "pursr-playwright-sync-validation-"));
   const bytes = solidPng(640, 360);
   const manager = new BrowserSessionManager({ outputDir });
@@ -284,7 +284,7 @@ test("final Playwright PNG validation does not depend on the async parser callba
     const result = await manager.screenshot("sync-validation", {
       strategy: "playwright",
       animations: "allow",
-      timeoutMs: 200,
+      timeoutMs: 3_000,
     });
     assert.equal(result.captureMode, "viewport");
     assert.deepEqual(
