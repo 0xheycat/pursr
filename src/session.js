@@ -425,8 +425,10 @@ export class BrowserSessionManager {
 
   async _screenshot(sessionId, options = {}) {
     const session = this.get(sessionId, { allowClosing: true });
+    const playwrightHealth = session.captureHealth.playwright;
     const preferredStrategy = (!options.strategy || options.strategy === "auto")
-      && session.captureHealth.playwright.status === "degraded"
+      && playwrightHealth.status === "degraded"
+      && playwrightHealth.cdpSuccessesSinceFailure < PLAYWRIGHT_REPROBE_AFTER_CDP_SUCCESSES
       ? "cdp"
       : undefined;
     try {
