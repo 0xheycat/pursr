@@ -77,7 +77,7 @@ function createDeadline(timeoutMs) {
 }
 
 function temporaryPath(file) {
-  return join(dirname(file), `.${basename(file)}.tmp-${process.pid}-${randomUUID()}`);
+  return join(dirname(file), `.${basename(file)}.tmp-${process.pid}-${randomUUID()}.png`);
 }
 
 function backupPath(file) {
