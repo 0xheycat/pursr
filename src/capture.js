@@ -289,62 +289,121 @@ async function copyTile(segment, output, destinationX, destinationY, deadline) {
   }
 }
 
+function tileOrigins(contentLength, viewportLength) {
+  const maxOrigin = Math.max(0, contentLength - viewportLength);
+  const origins = [];
+  for (let origin = 0; origin < maxOrigin; origin += viewportLength) origins.push(origin);
+  origins.push(maxOrigin);
+  return origins;
+}
+
+function evaluateScroll(page, x, y) {
+  return page.evaluate(({ x: targetX, y: targetY }) => {
+    window.scrollTo(targetX, targetY);
+    return { x: window.scrollX, y: window.scrollY };
+  }, { x, y });
+}
+
+async function readScrollPosition(page, deadline) {
+  const position = await deadline.run("stitched scroll read", () => page.evaluate(() => ({
+    x: window.scrollX,
+    y: window.scrollY,
+  })));
+  return {
+    x: Number(position?.x) || 0,
+    y: Number(position?.y) || 0,
+  };
+}
+
+async function scrollToPosition(page, x, y, deadline, label = "stitched scroll") {
+  const position = await deadline.run(label, () => evaluateScroll(page, x, y));
+  return {
+    x: Number(position?.x) || 0,
+    y: Number(position?.y) || 0,
+  };
+}
+
 async function captureFullPageStitched(page, deadline, { timeout, animations }) {
   const content = await readFullPageMetrics(page, deadline);
   const viewport = page.viewportSize?.();
   const viewportWidth = Math.max(1, Math.floor(Number(viewport?.width) || content.width));
   const viewportHeight = Math.max(1, Math.floor(Number(viewport?.height) || Math.min(content.height, 900)));
+  const originalScroll = await readScrollPosition(page, deadline);
+  const xOrigins = tileOrigins(content.width, viewportWidth);
+  const yOrigins = tileOrigins(content.height, viewportHeight);
   let output = null;
   let scaleX = null;
   let scaleY = null;
 
-  for (let y = 0; y < content.height; y += viewportHeight) {
-    const segmentHeight = Math.min(viewportHeight, content.height - y);
-    for (let x = 0; x < content.width; x += viewportWidth) {
-      const segmentWidth = Math.min(viewportWidth, content.width - x);
-      const result = await deadline.run("Playwright stitched segment", () => page.screenshot({
-        clip: {
-          x: content.x + x,
-          y: content.y + y,
-          width: segmentWidth,
-          height: segmentHeight,
-        },
-        timeout: Math.min(timeout, Math.max(1, deadline.remaining())),
-        animations,
-      }));
-      if (!Buffer.isBuffer(result)) {
-        throw new Error("Playwright stitched segment returned no image buffer");
-      }
-
-      const segment = await decodePng(result, deadline, "stitched segment PNG validation");
-      if (!output) {
-        scaleX = segment.width / segmentWidth;
-        scaleY = segment.height / segmentHeight;
-        if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) {
-          throw new Error("stitched segment returned invalid device scale");
+  try {
+    for (const yOrigin of yOrigins) {
+      for (const xOrigin of xOrigins) {
+        const position = await scrollToPosition(
+          page,
+          content.x + xOrigin,
+          content.y + yOrigin,
+          deadline,
+        );
+        const x = Math.max(0, Math.min(content.width - 1, Math.round(position.x - content.x)));
+        const y = Math.max(0, Math.min(content.height - 1, Math.round(position.y - content.y)));
+        const segmentWidth = Math.min(viewportWidth, content.width - x);
+        const segmentHeight = Math.min(viewportHeight, content.height - y);
+        const result = await deadline.run("Playwright stitched segment", () => page.screenshot({
+          clip: {
+            x: 0,
+            y: 0,
+            width: segmentWidth,
+            height: segmentHeight,
+          },
+          timeout: Math.min(timeout, Math.max(1, deadline.remaining())),
+          animations,
+        }));
+        if (!Buffer.isBuffer(result)) {
+          throw new Error("Playwright stitched segment returned no image buffer");
         }
-        deadline.assert("stitched output allocation");
-        output = new PNG({
-          width: Math.round(content.width * scaleX),
-          height: Math.round(content.height * scaleY),
-        });
-        deadline.assert("stitched output allocation");
-      }
 
-      const expectedWidth = Math.round(segmentWidth * scaleX);
-      const expectedHeight = Math.round(segmentHeight * scaleY);
-      if (segment.width !== expectedWidth || segment.height !== expectedHeight) {
-        throw new Error(
-          `stitched segment dimensions changed: expected ${expectedWidth}x${expectedHeight}, got ${segment.width}x${segment.height}`,
+        const segment = await decodePng(result, deadline, "stitched segment PNG validation");
+        if (!output) {
+          scaleX = segment.width / segmentWidth;
+          scaleY = segment.height / segmentHeight;
+          if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) {
+            throw new Error("stitched segment returned invalid device scale");
+          }
+          deadline.assert("stitched output allocation");
+          output = new PNG({
+            width: Math.round(content.width * scaleX),
+            height: Math.round(content.height * scaleY),
+          });
+          deadline.assert("stitched output allocation");
+        }
+
+        const expectedWidth = Math.round(segmentWidth * scaleX);
+        const expectedHeight = Math.round(segmentHeight * scaleY);
+        if (segment.width !== expectedWidth || segment.height !== expectedHeight) {
+          throw new Error(
+            `stitched segment dimensions changed: expected ${expectedWidth}x${expectedHeight}, got ${segment.width}x${segment.height}`,
+          );
+        }
+        await copyTile(
+          segment,
+          output,
+          Math.round(x * scaleX),
+          Math.round(y * scaleY),
+          deadline,
         );
       }
-      await copyTile(
-        segment,
-        output,
-        Math.round(x * scaleX),
-        Math.round(y * scaleY),
+    }
+  } finally {
+    if (deadline.remaining() > 0) {
+      await scrollToPosition(
+        page,
+        originalScroll.x,
+        originalScroll.y,
         deadline,
-      );
+        "stitched scroll restore",
+      ).catch(() => {});
+    } else {
+      Promise.resolve(evaluateScroll(page, originalScroll.x, originalScroll.y)).catch(() => {});
     }
   }
 
