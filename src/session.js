@@ -271,7 +271,7 @@ export class BrowserSessionManager {
   async _act(sessionId, actions = []) {
     if (!Array.isArray(actions) || !actions.length) throw new Error("actions must be a non-empty array");
     if (actions.length > MAX_ACTIONS) throw new Error(`actions cannot exceed ${MAX_ACTIONS}`);
-    const session = this.get(sessionId);
+    const session = this.get(sessionId, { allowClosing: true });
     const { page, visual, operatorOptions } = session;
     const trace = [];
     for (let i = 0; i < actions.length; i++) {
@@ -392,7 +392,7 @@ export class BrowserSessionManager {
   }
 
   async _screenshot(sessionId, options = {}) {
-    const session = this.get(sessionId);
+    const session = this.get(sessionId, { allowClosing: true });
     const preferredStrategy = (!options.strategy || options.strategy === "auto")
       && session.captureHealth.playwright.status === "degraded"
       ? "cdp"
