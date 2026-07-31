@@ -477,10 +477,18 @@ test("full-page capture reaches a stitched fallback when compositor capture fail
     }
     throw new Error("CDP full-surface capture exceeded compositor limits");
   });
+  const scroll = { x: 0, y: 0 };
   const page = mockSession(manager, "stitched", {
     context,
     page: {
       viewportSize: () => ({ width: 4, height: 2 }),
+      evaluate: async (_fn, payload) => {
+        if (payload && Number.isFinite(payload.x) && Number.isFinite(payload.y)) {
+          scroll.x = 0;
+          scroll.y = Math.max(0, Math.min(4, payload.y));
+        }
+        return { ...scroll };
+      },
       screenshot: async (options) => {
         if (options.fullPage) throw new Error("Playwright full-page capture timed out");
         if (options.clip) return segment;
@@ -596,6 +604,8 @@ test("adaptive selector capture uses CDP first after Playwright degrades", async
 test("stitched full-page capture tiles both horizontal and vertical overflow", async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "pursr-stitch-2d-"));
   const clips = [];
+  const visited = [];
+  const scroll = { x: 0, y: 0 };
   const manager = new BrowserSessionManager({ outputDir });
   const context = cdpContext(async (method) => {
     if (method === "Page.getLayoutMetrics") {
@@ -607,6 +617,14 @@ test("stitched full-page capture tiles both horizontal and vertical overflow", a
     context,
     page: {
       viewportSize: () => ({ width: 4, height: 3 }),
+      evaluate: async (_fn, payload) => {
+        if (payload && Number.isFinite(payload.x) && Number.isFinite(payload.y)) {
+          scroll.x = Math.max(0, Math.min(2, payload.x));
+          scroll.y = Math.max(0, Math.min(2, payload.y));
+          visited.push({ ...scroll });
+        }
+        return { ...scroll };
+      },
       screenshot: async ({ clip }) => {
         clips.push(clip);
         return solidPng(clip.width, clip.height);
@@ -623,11 +641,65 @@ test("stitched full-page capture tiles both horizontal and vertical overflow", a
     });
     const decoded = PNG.sync.read(Buffer.from(result.data, "base64"));
     assert.deepEqual({ width: decoded.width, height: decoded.height }, { width: 6, height: 5 });
-    assert.ok(clips.some((clip) => clip.x === 4), "stitching must cover horizontal overflow");
-    assert.ok(clips.some((clip) => clip.y === 3), "stitching must cover vertical overflow");
+    assert.ok(visited.some((position) => position.x === 2), "stitching must cover horizontal overflow");
+    assert.ok(visited.some((position) => position.y === 2), "stitching must cover vertical overflow");
+    assert.ok(clips.every((clip) => clip.x === 0 && clip.y === 0), "clips must stay viewport-relative");
     for (let offset = 3; offset < decoded.data.length; offset += 4) {
       assert.equal(decoded.data[offset], 255, `pixel ${Math.floor(offset / 4)} must be populated`);
     }
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("stitched capture scrolls each document tile into a viewport-relative clip and restores scroll", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-stitch-scroll-"));
+  const manager = new BrowserSessionManager({ outputDir });
+  const scroll = { x: 1, y: 1 };
+  const visited = [];
+  const clips = [];
+  const context = cdpContext(async (method) => {
+    if (method === "Page.getLayoutMetrics") {
+      return { cssContentSize: { x: 0, y: 0, width: 6, height: 5 } };
+    }
+    throw new Error(`unexpected CDP method: ${method}`);
+  });
+  const page = mockSession(manager, "stitch-scroll", {
+    context,
+    page: {
+      viewportSize: () => ({ width: 4, height: 3 }),
+      evaluate: async (_fn, payload) => {
+        if (payload && Number.isFinite(payload.x) && Number.isFinite(payload.y)) {
+          scroll.x = Math.max(0, Math.min(2, payload.x));
+          scroll.y = Math.max(0, Math.min(2, payload.y));
+          visited.push({ ...scroll });
+        }
+        return { ...scroll };
+      },
+      screenshot: async ({ clip }) => {
+        clips.push({ ...clip, scroll: { ...scroll } });
+        assert.equal(clip.x, 0, "Playwright clip x must be viewport-relative");
+        assert.equal(clip.y, 0, "Playwright clip y must be viewport-relative");
+        assert.ok(clip.width > 0 && clip.width <= 4);
+        assert.ok(clip.height > 0 && clip.height <= 3);
+        return solidPng(clip.width, clip.height);
+      },
+    },
+  });
+  page.context = () => context;
+
+  try {
+    const result = await manager.screenshot("stitch-scroll", {
+      full: true,
+      strategy: "stitched",
+      timeoutMs: 2_000,
+    });
+    const decoded = PNG.sync.read(Buffer.from(result.data, "base64"));
+    assert.deepEqual({ width: decoded.width, height: decoded.height }, { width: 6, height: 5 });
+    assert.ok(visited.some((position) => position.x === 2), "must scroll to the right edge");
+    assert.ok(visited.some((position) => position.y === 2), "must scroll to the bottom edge");
+    assert.deepEqual(scroll, { x: 1, y: 1 }, "stitched capture must restore the original scroll position");
+    assert.ok(clips.every((clip) => clip.x === 0 && clip.y === 0));
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
   }
