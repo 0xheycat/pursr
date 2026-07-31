@@ -77,6 +77,25 @@ function normalizedTimeout(value, fallback) {
   return Number.isFinite(timeout) && timeout >= 0 ? timeout : fallback;
 }
 
+async function evaluateAction(page, source, timeoutMs) {
+  const timeout = normalizedTimeout(timeoutMs, WAIT_DEFAULT_TIMEOUT_MS);
+  let timer;
+  try {
+    return await Promise.race([
+      page.evaluate(source),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`eval action timed out after ${timeout}ms`)),
+          Math.max(1, timeout),
+        );
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function forcedPointerEvent(op) {
   return {
     eventType: op === "doubleClick" ? "dblclick" : "click",
@@ -300,9 +319,12 @@ export class BrowserSessionManager {
     return await this._enqueue(sessionId, () => this._inspect(sessionId, selector));
   }
 
-  async _act(sessionId, actions = []) {
+  async _act(sessionId, actions = [], options = {}) {
     if (!Array.isArray(actions) || !actions.length) throw new Error("actions must be a non-empty array");
     if (actions.length > MAX_ACTIONS) throw new Error(`actions cannot exceed ${MAX_ACTIONS}`);
+    const defaultActionTimeoutMs = options.timeoutMs === undefined
+      ? undefined
+      : normalizedTimeout(options.timeoutMs, WAIT_DEFAULT_TIMEOUT_MS);
     const session = this.get(sessionId, { allowClosing: true });
     const { page, visual, operatorOptions } = session;
     const trace = [];
@@ -314,7 +336,10 @@ export class BrowserSessionManager {
         if (["click", "doubleClick", "hover", "fill", "type", "check", "select"].includes(op) && action.selector) {
           const locator = await resolveLocator(page, action.selector);
           const target = locator.first();
-          const timeout = normalizedTimeout(action.timeoutMs, CLICK_TIMEOUT_MS);
+          const timeout = normalizedTimeout(
+            action.timeoutMs,
+            defaultActionTimeoutMs ?? CLICK_TIMEOUT_MS,
+          );
           const force = action.force === true;
           let waitError = null;
           try {
@@ -380,10 +405,21 @@ export class BrowserSessionManager {
         else if (op === "keyDown") await page.keyboard.down(String(action.key));
         else if (op === "keyUp") await page.keyboard.up(String(action.key));
         else if (op === "scroll") await page.mouse.wheel(Number(action.deltaX) || 0, Number(action.deltaY) || 0);
-        else if (op === "wait") await (await resolveLocator(page, action.selector)).first().waitFor({ state: action.state || "visible", timeout: action.timeoutMs || WAIT_DEFAULT_TIMEOUT_MS });
+        else if (op === "wait") await (await resolveLocator(page, action.selector)).first().waitFor({
+          state: action.state || "visible",
+          timeout: normalizedTimeout(
+            action.timeoutMs,
+            defaultActionTimeoutMs ?? WAIT_DEFAULT_TIMEOUT_MS,
+          ),
+        });
         else if (op === "sleep") await page.waitForTimeout(Math.max(0, Number(action.ms) || 0));
         else if (op === "navigate") {
-          await gotoOrThrow(page, action.url, { timeoutMs: action.timeoutMs });
+          await gotoOrThrow(page, action.url, {
+            timeoutMs: normalizedTimeout(
+              action.timeoutMs,
+              defaultActionTimeoutMs ?? WAIT_DEFAULT_TIMEOUT_MS,
+            ),
+          });
           if (visual) await installVisualOperator(page, operatorOptions);
         } else if (op === "reload") {
           await page.reload({ waitUntil: "domcontentloaded" });
@@ -394,7 +430,13 @@ export class BrowserSessionManager {
         } else if (op === "annotate") {
           if (!visual) throw new Error("annotate requires a visual session");
           const locator = await resolveLocator(page, action.selector);
-          await locator.first().waitFor({ state: "visible", timeout: action.timeoutMs || CLICK_TIMEOUT_MS });
+          await locator.first().waitFor({
+            state: "visible",
+            timeout: normalizedTimeout(
+              action.timeoutMs,
+              defaultActionTimeoutMs ?? CLICK_TIMEOUT_MS,
+            ),
+          });
           const point = await visualPointForLocator(locator.first());
           await moveVisualCursor(page, point.x, point.y, { ...operatorOptions, durationMs: action.durationMs });
           await highlightVisualTarget(page, point.rect, { ...operatorOptions, color: action.color, label: action.label || action.selector });
@@ -407,7 +449,14 @@ export class BrowserSessionManager {
           if (typeof action.js !== "string" || !action.js.trim()) {
             throw new Error("eval requires non-empty js");
           }
-          step.result = await page.evaluate(action.js);
+          step.result = await evaluateAction(
+            page,
+            action.js,
+            normalizedTimeout(
+              action.timeoutMs,
+              defaultActionTimeoutMs ?? WAIT_DEFAULT_TIMEOUT_MS,
+            ),
+          );
         } else throw new Error(`unknown action type: ${op}`);
         if (action.settleMs) await page.waitForTimeout(Number(action.settleMs));
         step.ok = true;
@@ -419,8 +468,8 @@ export class BrowserSessionManager {
     return { sessionId, url: page.url(), title: await page.title(), trace, failed: trace.some((step) => !step.ok) };
   }
 
-  async act(sessionId, actions = []) {
-    return await this._enqueue(sessionId, () => this._act(sessionId, actions));
+  async act(sessionId, actions = [], options = {}) {
+    return await this._enqueue(sessionId, () => this._act(sessionId, actions, options));
   }
 
   async _screenshot(sessionId, options = {}) {

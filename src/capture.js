@@ -120,7 +120,24 @@ async function decodePng(buffer, deadline, label = "PNG image validation") {
 }
 
 async function inspectPng(buffer, deadline) {
-  const decoded = await decodePng(buffer, deadline);
+  if (!Buffer.isBuffer(buffer) || buffer.length < 24) {
+    throw new Error("Invalid PNG image validation: capture is empty or truncated");
+  }
+  if (!buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+    throw new Error("Invalid PNG image validation: PNG signature mismatch");
+  }
+
+  deadline.assert("PNG image validation");
+  let decoded;
+  try {
+    decoded = PNG.sync.read(buffer, { checkCRC: true });
+  } catch (error) {
+    throw new Error(`Invalid PNG image validation: ${errorMessage(error)}`);
+  }
+  deadline.assert("PNG image validation");
+  if (!decoded || decoded.width <= 0 || decoded.height <= 0) {
+    throw new Error("Invalid PNG image validation: image dimensions are empty");
+  }
   return {
     width: decoded.width,
     height: decoded.height,
