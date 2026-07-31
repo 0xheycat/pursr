@@ -231,6 +231,20 @@ test("browser discovery finds full Chromium in the Playwright cache", () => {
   assert.ok(candidates.includes(expected));
   assert.equal(candidates.some((path) => path.includes("chromium_headless_shell")), false);
   assert.equal(discoverBrowsers({ ...options, exists: (path) => path === expected }).preferred, expected);
+
+  const macRoot = "/Users/test/Library/Caches/ms-playwright";
+  const macCandidates = browserCandidates({
+    platform: "darwin",
+    env: { PATH: "", PLAYWRIGHT_BROWSERS_PATH: macRoot },
+    homeDir: "/Users/test",
+    readDir: (path) => path === macRoot ? ["chromium-1234"] : [],
+  });
+  assert.ok(macCandidates.includes(
+    `${macRoot}/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`,
+  ));
+  assert.ok(macCandidates.includes(
+    `${macRoot}/chromium-1234/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`,
+  ));
 });
 
 test("browser launch falls back to an installed Playwright Chromium", async () => {

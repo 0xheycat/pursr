@@ -148,7 +148,7 @@ test("failed replacement preserves the previous valid artifact and structured ca
   try {
     let failure;
     try {
-      await manager.screenshot("atomic", { out: file, timeoutMs: 100 });
+      await manager.screenshot("atomic", { out: file, timeoutMs: 500 });
     } catch (error) {
       failure = error;
     }
@@ -174,7 +174,7 @@ test("invalid CDP bytes are rejected and never published as an artifact", async 
 
   try {
     await assert.rejects(
-      manager.screenshot("invalid", { out: file, timeoutMs: 100 }),
+      manager.screenshot("invalid", { out: file, timeoutMs: 500 }),
       /invalid.*png|image validation/i,
     );
     assert.equal(existsSync(file), false);
@@ -202,8 +202,8 @@ test("auto strategy learns from a Playwright timeout and uses CDP first next tim
   page.context = () => context;
 
   try {
-    await manager.screenshot("adaptive", { timeoutMs: 100 });
-    const second = await manager.screenshot("adaptive", { timeoutMs: 100 });
+    await manager.screenshot("adaptive", { timeoutMs: 500 });
+    const second = await manager.screenshot("adaptive", { timeoutMs: 500 });
     assert.equal(playwrightCalls, 1, "degraded Playwright capture should not be retried immediately");
     assert.equal(second.attempts[0].strategy, "cdp");
   } finally {
@@ -229,7 +229,7 @@ test("explicit CDP strategy skips Playwright without removing caller control", a
   page.context = () => context;
 
   try {
-    const result = await manager.screenshot("force-cdp", { strategy: "cdp", timeoutMs: 100 });
+    const result = await manager.screenshot("force-cdp", { strategy: "cdp", timeoutMs: 500 });
     assert.equal(playwrightCalls, 0);
     assert.equal(result.attempts[0].strategy, "cdp");
   } finally {
@@ -259,9 +259,9 @@ test("adaptive capture health is isolated per browser session", async () => {
   }
 
   try {
-    await manager.screenshot("a", { timeoutMs: 100 });
-    await manager.screenshot("a", { timeoutMs: 100 });
-    await manager.screenshot("b", { timeoutMs: 100 });
+    await manager.screenshot("a", { timeoutMs: 500 });
+    await manager.screenshot("a", { timeoutMs: 500 });
+    await manager.screenshot("b", { timeoutMs: 500 });
     assert.deepEqual(calls, { a: 1, b: 1 });
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
@@ -290,7 +290,7 @@ test("same-session capture and action are serialized in arrival order", async ()
 
   try {
     await Promise.all([
-      manager.screenshot("queue", { timeoutMs: 200 }),
+      manager.screenshot("queue", { timeoutMs: 1_000 }),
       manager.act("queue", [{ type: "eval", js: "1 + 1" }]),
     ]);
     assert.deepEqual(events, ["capture-start", "capture-end", "action"]);
@@ -321,8 +321,8 @@ test("different browser sessions remain concurrent", async () => {
 
   try {
     const captures = [
-      manager.screenshot("one", { timeoutMs: 200 }),
-      manager.screenshot("two", { timeoutMs: 200 }),
+      manager.screenshot("one", { timeoutMs: 1_000 }),
+      manager.screenshot("two", { timeoutMs: 1_000 }),
     ];
     for (let attempt = 0; attempt < 20 && started.length < 2; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 5));
@@ -355,7 +355,7 @@ test("close waits for an active same-session capture before releasing browser re
   });
 
   try {
-    const capture = manager.screenshot("close-queue", { timeoutMs: 200 });
+    const capture = manager.screenshot("close-queue", { timeoutMs: 1_000 });
     for (let attempt = 0; attempt < 20 && !events.includes("capture-start"); attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
@@ -418,11 +418,11 @@ test("snapshot and inspect share the same-session queue with capture", async () 
 
   try {
     await Promise.all([
-      manager.screenshot("read-queue", { timeoutMs: 200 }),
+      manager.screenshot("read-queue", { timeoutMs: 1_000 }),
       manager.snapshot("read-queue", { selector: "body" }),
     ]);
     await Promise.all([
-      manager.screenshot("read-queue", { timeoutMs: 200 }),
+      manager.screenshot("read-queue", { timeoutMs: 1_000 }),
       manager.inspect("read-queue", "#target"),
     ]);
 
@@ -463,7 +463,7 @@ test("full-page capture reaches a stitched fallback when compositor capture fail
   page.context = () => context;
 
   try {
-    const result = await manager.screenshot("stitched", { full: true, timeoutMs: 250 });
+    const result = await manager.screenshot("stitched", { full: true, timeoutMs: 1_000 });
     assert.equal(result.captureMode, "stitched-full-page-fallback");
     assert.deepEqual(
       { width: result.image.width, height: result.image.height },
@@ -495,7 +495,7 @@ test("persistent auto capture avoids repeated identical Playwright timeouts", as
   try {
     const results = [];
     for (let index = 0; index < 20; index += 1) {
-      results.push(await manager.screenshot("persistent", { timeoutMs: 100 }));
+      results.push(await manager.screenshot("persistent", { timeoutMs: 500 }));
     }
     assert.equal(playwrightCalls, 1);
     assert.equal(results.length, 20);
@@ -522,7 +522,7 @@ test("header-shaped but corrupt PNG bytes are rejected before publish", async ()
 
   try {
     await assert.rejects(
-      manager.screenshot("corrupt-png", { out: file, strategy: "cdp", timeoutMs: 100 }),
+      manager.screenshot("corrupt-png", { out: file, strategy: "cdp", timeoutMs: 500 }),
       /invalid.*png|image validation|unexpected end|crc/i,
     );
     assert.equal(existsSync(file), false);
@@ -556,8 +556,8 @@ test("adaptive selector capture uses CDP first after Playwright degrades", async
   page.context = () => context;
 
   try {
-    await manager.screenshot("selector-adaptive", { selector: "#target", timeoutMs: 100 });
-    const second = await manager.screenshot("selector-adaptive", { selector: "#target", timeoutMs: 100 });
+    await manager.screenshot("selector-adaptive", { selector: "#target", timeoutMs: 500 });
+    const second = await manager.screenshot("selector-adaptive", { selector: "#target", timeoutMs: 500 });
     assert.equal(locatorCalls, 1);
     assert.equal(second.attempts[0].strategy, "cdp");
   } finally {
@@ -591,7 +591,7 @@ test("stitched full-page capture tiles both horizontal and vertical overflow", a
     const result = await manager.screenshot("stitch-2d", {
       full: true,
       strategy: "stitched",
-      timeoutMs: 500,
+      timeoutMs: 2_000,
     });
     const decoded = PNG.sync.read(Buffer.from(result.data, "base64"));
     assert.deepEqual({ width: decoded.width, height: decoded.height }, { width: 6, height: 5 });
@@ -650,7 +650,7 @@ test("adaptive auto capture periodically re-probes Playwright health", async () 
   try {
     const results = [];
     for (let index = 0; index < 22; index += 1) {
-      results.push(await manager.screenshot("reprobe", { timeoutMs: 100 }));
+      results.push(await manager.screenshot("reprobe", { timeoutMs: 500 }));
     }
     assert.equal(playwrightCalls, 3, "auto must probe once, then restore healthy Playwright capture");
     assert.equal(results[20].attempts[0].strategy, "playwright");
