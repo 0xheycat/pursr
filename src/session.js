@@ -17,10 +17,17 @@ import {
 
 const MAX_DIAGNOSTICS = 250;
 const MAX_ACTIONS = 50;
+const PLAYWRIGHT_REPROBE_AFTER_CDP_SUCCESSES = 20;
 
 function createCaptureHealth() {
   return {
-    playwright: { status: "healthy", consecutiveFailures: 0, lastSuccessAt: null, lastFailureAt: null },
+    playwright: {
+      status: "healthy",
+      consecutiveFailures: 0,
+      lastSuccessAt: null,
+      lastFailureAt: null,
+      cdpSuccessesSinceFailure: 0,
+    },
     cdp: { status: "unknown", consecutiveFailures: 0, lastSuccessAt: null, lastFailureAt: null },
   };
 }
@@ -32,10 +39,35 @@ function captureAttempts(value) {
 function updateCaptureHealth(session, value) {
   const now = new Date().toISOString();
   for (const attempt of captureAttempts(value)) {
-    if (attempt.strategy !== "playwright" && attempt.strategy !== "cdp") continue;
-    const state = session.captureHealth[attempt.strategy];
-    if (attempt.status === "success") { state.status = "healthy"; state.consecutiveFailures = 0; state.lastSuccessAt = now; }
-    else { state.status = "degraded"; state.consecutiveFailures += 1; state.lastFailureAt = now; }
+    if (attempt.strategy === "playwright") {
+      const state = session.captureHealth.playwright;
+      if (attempt.status === "success") {
+        state.status = "healthy";
+        state.consecutiveFailures = 0;
+        state.lastSuccessAt = now;
+        state.cdpSuccessesSinceFailure = 0;
+      } else {
+        state.status = "degraded";
+        state.consecutiveFailures += 1;
+        state.lastFailureAt = now;
+        state.cdpSuccessesSinceFailure = 0;
+      }
+      continue;
+    }
+    if (attempt.strategy !== "cdp") continue;
+    const state = session.captureHealth.cdp;
+    if (attempt.status === "success") {
+      state.status = "healthy";
+      state.consecutiveFailures = 0;
+      state.lastSuccessAt = now;
+      if (session.captureHealth.playwright.status === "degraded") {
+        session.captureHealth.playwright.cdpSuccessesSinceFailure += 1;
+      }
+    } else {
+      state.status = "degraded";
+      state.consecutiveFailures += 1;
+      state.lastFailureAt = now;
+    }
   }
 }
 const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
