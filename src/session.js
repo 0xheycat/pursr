@@ -17,6 +17,27 @@ import {
 
 const MAX_DIAGNOSTICS = 250;
 const MAX_ACTIONS = 50;
+
+function createCaptureHealth() {
+  return {
+    playwright: { status: "healthy", consecutiveFailures: 0, lastSuccessAt: null, lastFailureAt: null },
+    cdp: { status: "unknown", consecutiveFailures: 0, lastSuccessAt: null, lastFailureAt: null },
+  };
+}
+
+function captureAttempts(value) {
+  return Array.isArray(value?.attempts) ? value.attempts : [];
+}
+
+function updateCaptureHealth(session, value) {
+  const now = new Date().toISOString();
+  for (const attempt of captureAttempts(value)) {
+    if (attempt.strategy !== "playwright" && attempt.strategy !== "cdp") continue;
+    const state = session.captureHealth[attempt.strategy];
+    if (attempt.status === "success") { state.status = "healthy"; state.consecutiveFailures = 0; state.lastSuccessAt = now; }
+    else { state.status = "degraded"; state.consecutiveFailures += 1; state.lastFailureAt = now; }
+  }
+}
 const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
 
 function normalizedTimeout(value, fallback) {
