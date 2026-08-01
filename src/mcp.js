@@ -198,6 +198,11 @@ class PursrMCPServer {
               minimum: 0,
               description: "Default per-action deadline for actions that omit timeoutMs. Eval actions are bounded by this deadline.",
             },
+            operationTimeoutMs: {
+              type: "number",
+              minimum: 0,
+              description: "Total deadline for the complete ordered action batch, including settle and result metadata.",
+            },
             actions: {
               type: "array",
               minItems: 1,
@@ -234,8 +239,10 @@ class PursrMCPServer {
             sessionId: { type: "string" }, out: { type: "string" }, full: { type: "boolean" },
             selector: { type: "string", description: "Capture only the first matching element" },
             timeoutMs: { type: "number", minimum: 0, description: "Total capture operation deadline shared by all strategies and artifact publishing." },
+            operationTimeoutMs: { type: "number", minimum: 0, description: "Outer session-operation deadline. Use a larger value than timeoutMs when queue and recovery time must be included." },
             strategy: { type: "string", enum: ["auto", "playwright", "cdp", "stitched"], description: "Caller-controlled capture strategy. Auto adapts from observed per-session health. Stitched requires full=true and cannot be combined with selector." },
             animations: { type: "string", enum: ["auto", "allow", "disabled"], description: "Animation handling. Auto preserves the current disabled default." },
+            includeData: { type: "boolean", description: "Return inline base64 pixels. Set false for high-resolution artifact-first capture." },
           },
           required: ["sessionId"],
         },
@@ -462,7 +469,7 @@ class PursrMCPServer {
     const result = await this.sessions.act(
       this._requireSessionId(args),
       args.actions,
-      { timeoutMs: args.timeoutMs },
+      { timeoutMs: args.timeoutMs, operationTimeoutMs: args.operationTimeoutMs },
     );
     return this._text(result);
   }
@@ -478,7 +485,7 @@ class PursrMCPServer {
     });
     return [
       { type: "text", text: JSON.stringify(metadata, null, 2) },
-      { type: "image", data, mimeType },
+      ...(data ? [{ type: "image", data, mimeType }] : []),
     ];
   }
 
