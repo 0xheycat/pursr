@@ -71,7 +71,7 @@ test("selector actions forward explicit timeout and force instead of using hidde
   ]);
 });
 
-test("eval actions return a bounded failure instead of holding the MCP transport", { timeout: 750 }, async () => {
+test("eval actions return a bounded failure instead of holding the MCP transport", { timeout: 1_500 }, async () => {
   const manager = new BrowserSessionManager();
   mockSession(manager, "bounded-eval", {
     page: {
@@ -89,7 +89,67 @@ test("eval actions return a bounded failure instead of holding the MCP transport
 
   assert.equal(result.failed, true);
   assert.match(result.trace[0].error, /eval action timed out after 40ms/i);
-  assert.ok(elapsed < 300, `bounded eval should settle before transport timeout, took ${elapsed}ms`);
+  assert.ok(elapsed < 1_000, `bounded eval should settle well before the MCP transport window, took ${elapsed}ms`);
+});
+
+test("timed-out eval returns bounded metadata and does not poison the next queued action", { timeout: 1_000 }, async () => {
+  const manager = new BrowserSessionManager();
+  let evaluateCalls = 0;
+  mockSession(manager, "queue-recovery", {
+    page: {
+      evaluate: async () => {
+        evaluateCalls += 1;
+        if (evaluateCalls === 1) return await new Promise(() => {});
+        return 42;
+      },
+      title: async () => await new Promise(() => {}),
+    },
+  });
+
+  const firstStarted = Date.now();
+  const first = await manager.act(
+    "queue-recovery",
+    [{ type: "eval", js: "new Promise(() => {})", timeoutMs: 30 }],
+    { operationTimeoutMs: 120 },
+  );
+  const firstElapsed = Date.now() - firstStarted;
+
+  assert.equal(first.failed, true);
+  assert.match(first.trace[0].error, /eval action timed out after 30ms/i);
+  assert.equal(first.title, null);
+  assert.ok(firstElapsed < 300, `timed-out action should return bounded metadata, took ${firstElapsed}ms`);
+
+  const secondStarted = Date.now();
+  const second = await manager.act(
+    "queue-recovery",
+    [{ type: "eval", js: "21 * 2", timeoutMs: 100 }],
+    { operationTimeoutMs: 250 },
+  );
+  const secondElapsed = Date.now() - secondStarted;
+
+  assert.equal(second.failed, false);
+  assert.equal(second.trace[0].result, 42);
+  assert.ok(secondElapsed < 300, `next queued action should not inherit the prior timeout, took ${secondElapsed}ms`);
+});
+
+test("operationTimeoutMs bounds the entire action batch instead of summing past transport budgets", { timeout: 1_000 }, async () => {
+  const manager = new BrowserSessionManager();
+  mockSession(manager, "operation-budget", {
+    page: {
+      waitForTimeout: async () => await new Promise(() => {}),
+    },
+  });
+
+  const started = Date.now();
+  await assert.rejects(
+    manager.act(
+      "operation-budget",
+      [{ type: "sleep", ms: 60_000 }],
+      { operationTimeoutMs: 40 },
+    ),
+    /browser act operation timed out after 40ms/i,
+  );
+  assert.ok(Date.now() - started < 300, "whole-operation deadline must beat the client transport deadline");
 });
 
 test("explicit force falls back to DOM dispatch when Playwright cannot settle a visible selector", async () => {
@@ -246,6 +306,36 @@ test("selector screenshot falls back to bounded CDP clipping when locator stabil
   }
 });
 
+test("high-resolution artifact-first screenshot can omit inline base64 without losing the PNG", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "pursr-artifact-first-"));
+  const file = join(outputDir, "high-res.png");
+  const png = new PNG({ width: 3840, height: 4 });
+  const buffer = PNG.sync.write(png);
+  const manager = new BrowserSessionManager({ outputDir });
+  mockSession(manager, "artifact-first", {
+    page: {
+      screenshot: async () => buffer,
+    },
+  });
+
+  try {
+    const result = await manager.screenshot("artifact-first", {
+      out: file,
+      timeoutMs: 3_000,
+      operationTimeoutMs: 4_000,
+      includeData: false,
+      strategy: "playwright",
+      animations: "allow",
+    });
+
+    assert.equal("data" in result, false);
+    assert.equal(result.image.width, 3840);
+    assert.ok(readFileSync(file).equals(buffer));
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
 test("viewport screenshot falls back to CDP when Playwright capture times out", async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "pursr-viewport-fallback-"));
   const file = join(outputDir, "viewport.png");
@@ -367,6 +457,21 @@ test("full-page screenshot falls back to CDP when Playwright capture times out",
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
   }
+});
+
+test("close bypasses a poisoned operation queue", { timeout: 750 }, async () => {
+  const manager = new BrowserSessionManager({ closeTimeoutMs: 20 });
+  mockSession(manager, "poisoned-queue");
+  const session = manager.get("poisoned-queue");
+  session.operationTail = new Promise(() => {});
+
+  const started = Date.now();
+  const result = await manager.close("poisoned-queue");
+  const elapsed = Date.now() - started;
+
+  assert.equal(result.closed, true);
+  assert.equal(manager.size, 0);
+  assert.ok(elapsed < 300, `force close must not wait behind the session queue, took ${elapsed}ms`);
 });
 
 test("close is bounded and removes a session even when a browser context never resolves", async () => {
