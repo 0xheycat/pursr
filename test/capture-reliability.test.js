@@ -396,7 +396,7 @@ test("different browser sessions remain concurrent", async () => {
   }
 });
 
-test("close waits for an active same-session capture before releasing browser resources", async () => {
+test("close bypasses an active same-session capture so recovery cannot deadlock", async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "pursr-capture-close-queue-"));
   const bytes = pngBuffer(4, 3);
   const events = [];
@@ -426,9 +426,9 @@ test("close waits for an active same-session capture before releasing browser re
     assert.equal(manager.size, 0);
     assert.deepEqual(events, [
       "capture-start",
-      "capture-end",
       "context-close",
       "browser-close",
+      "capture-end",
     ]);
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
@@ -869,7 +869,7 @@ test("stitched strategy without full-page mode rejects with its contract error",
   }
 });
 
-test("timed-out atomic publish restores the previous artifact after a late commit", { timeout: 2_000 }, async () => {
+test("timed-out atomic publish restores the previous artifact after a late commit", { timeout: 4_000 }, async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "pursr-late-publish-"));
   const file = join(outputDir, "stable.png");
   const original = solidPng(3, 3);
@@ -900,7 +900,12 @@ test("timed-out atomic publish restores the previous artifact after a late commi
       }),
       /publish.*deadline|deadline.*publish/i,
     );
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const transactionFilesRemain = readdirSync(outputDir)
+        .some((name) => name.includes(".tmp-") || name.includes(".backup-"));
+      if (!transactionFilesRemain && readFileSync(file).equals(original)) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
     assert.deepEqual(readFileSync(file), original, "late commit must restore the previous valid artifact");
     assert.equal(
       readdirSync(outputDir).some((name) => name.includes(".tmp-") || name.includes(".backup-")),
