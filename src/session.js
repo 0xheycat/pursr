@@ -77,6 +77,75 @@ function normalizedTimeout(value, fallback) {
   return Number.isFinite(timeout) && timeout >= 0 ? timeout : fallback;
 }
 
+function timeoutFailure(label, timeoutMs) {
+  const error = new Error(`${label} timed out after ${timeoutMs}ms`);
+  error.code = "BROWSER_OPERATION_TIMEOUT";
+  return error;
+}
+
+async function runWithDeadline(label, timeoutMs, operation) {
+  if (timeoutMs === undefined || timeoutMs === null) return await operation();
+  const timeout = normalizedTimeout(timeoutMs, WAIT_DEFAULT_TIMEOUT_MS);
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(timeoutFailure(label, timeout)), Math.max(1, timeout));
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function safePageUrl(page) {
+  try {
+    return page.url?.() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function safePageTitle(page, timeoutMs = 25) {
+  try {
+    return await runWithDeadline("page title read", timeoutMs, () => page.title());
+  } catch {
+    return null;
+  }
+}
+
+async function safePageMetadata(page) {
+  return {
+    url: safePageUrl(page),
+    title: await safePageTitle(page),
+  };
+}
+
+async function interruptPageExecution(page, timeoutMs = 1_500) {
+  const context = page.context?.();
+  if (!context?.newCDPSession) return false;
+  let session;
+  try {
+    session = await runWithDeadline(
+      "CDP recovery session",
+      timeoutMs,
+      () => context.newCDPSession(page),
+    );
+    await runWithDeadline(
+      "CDP execution interrupt",
+      timeoutMs,
+      () => session.send("Runtime.terminateExecution"),
+    );
+    return true;
+  } catch {
+    return false;
+  } finally {
+    Promise.resolve(session?.detach?.()).catch(() => {});
+  }
+}
+
 async function evaluateAction(page, source, timeoutMs) {
   const timeout = normalizedTimeout(timeoutMs, WAIT_DEFAULT_TIMEOUT_MS);
   let timer;
@@ -85,12 +154,17 @@ async function evaluateAction(page, source, timeoutMs) {
       page.evaluate(source),
       new Promise((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error(`eval action timed out after ${timeout}ms`)),
+          () => reject(timeoutFailure("eval action", timeout)),
           Math.max(1, timeout),
         );
         timer.unref?.();
       }),
     ]);
+  } catch (error) {
+    if (error?.code === "BROWSER_OPERATION_TIMEOUT") {
+      Promise.resolve(interruptPageExecution(page)).catch(() => {});
+    }
+    throw error;
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -205,20 +279,54 @@ export class BrowserSessionManager {
     return session;
   }
 
-  _enqueueSession(session, operation) {
+  _enqueueSession(session, operation, { kind = "operation", timeoutMs } = {}) {
     const previous = session.operationTail || Promise.resolve();
-    const task = previous.catch(() => {}).then(operation);
+    session.queueDepth = Number(session.queueDepth || 0) + 1;
+    const task = previous.catch(() => {}).then(async () => {
+      session.queueDepth = Math.max(0, Number(session.queueDepth || 0) - 1);
+      const startedAt = new Date().toISOString();
+      session.activeOperation = { kind, startedAt, timeoutMs: timeoutMs ?? null };
+      try {
+        return await runWithDeadline(`browser ${kind} operation`, timeoutMs, operation);
+      } catch (error) {
+        if (error?.code === "BROWSER_OPERATION_TIMEOUT" || /timed out|timeout/i.test(error?.message || "")) {
+          session.recoveryRequired = true;
+          Promise.resolve(interruptPageExecution(session.page)).then((recovered) => {
+            if (recovered) session.recoveryRequired = false;
+          }).catch(() => {});
+        }
+        throw error;
+      } finally {
+        session.activeOperation = null;
+      }
+    });
     session.operationTail = task.then(() => undefined, () => undefined);
     return task;
   }
 
-  _enqueue(sessionId, operation) {
+  _enqueue(sessionId, operation, options = {}) {
     const session = this.get(sessionId);
-    return this._enqueueSession(session, () => operation(session));
+    return this._enqueueSession(session, () => operation(session), options);
   }
 
   list() {
-    return [...this.sessions.values()].map(({ id, page, viewport, mode, visual, createdAt }) => ({ sessionId: id, url: page.url(), viewport, mode, visual, createdAt }));
+    return [...this.sessions.values()].map((session) => ({
+      sessionId: session.id,
+      url: safePageUrl(session.page),
+      viewport: session.viewport,
+      mode: session.mode,
+      visual: session.visual,
+      createdAt: session.createdAt,
+      closing: session.closing === true,
+      activeOperation: session.activeOperation || null,
+      queueDepth: Number(session.queueDepth || 0),
+      recoveryRequired: session.recoveryRequired === true,
+    }));
+  }
+
+  status(sessionId) {
+    const session = this.get(sessionId, { allowClosing: true });
+    return this.list().find((entry) => entry.sessionId === session.id);
   }
 
   async open({ sessionId, url, flags = {}, storageState } = {}) {
@@ -465,11 +573,21 @@ export class BrowserSessionManager {
       }
       trace.push(step);
     }
-    return { sessionId, url: page.url(), title: await page.title(), trace, failed: trace.some((step) => !step.ok) };
+    const metadata = await safePageMetadata(page);
+    return {
+      sessionId,
+      ...metadata,
+      trace,
+      failed: trace.some((step) => !step.ok),
+    };
   }
 
   async act(sessionId, actions = [], options = {}) {
-    return await this._enqueue(sessionId, () => this._act(sessionId, actions, options));
+    return await this._enqueue(
+      sessionId,
+      () => this._act(sessionId, actions, options),
+      { kind: "act", timeoutMs: options.operationTimeoutMs },
+    );
   }
 
   async _screenshot(sessionId, options = {}) {
@@ -496,7 +614,11 @@ export class BrowserSessionManager {
   }
 
   async screenshot(sessionId, options = {}) {
-    return await this._enqueue(sessionId, () => this._screenshot(sessionId, options));
+    return await this._enqueue(
+      sessionId,
+      () => this._screenshot(sessionId, options),
+      { kind: "screenshot", timeoutMs: options.operationTimeoutMs },
+    );
   }
 
   diagnostics(sessionId, { clear = false } = {}) {
@@ -534,9 +656,9 @@ export class BrowserSessionManager {
     if (!session) return { sessionId: id, closed: false };
     if (session.closePromise) return await session.closePromise;
     if (!session.captureHealth) session.captureHealth = createCaptureHealth();
-    if (!session.operationTail) session.operationTail = Promise.resolve();
     session.closing = true;
-    const closing = this._enqueueSession(session, () => this._close(id, session));
+    this.sessions.delete(id);
+    const closing = this._close(id, session);
     session.closePromise = closing;
     return await closing;
   }

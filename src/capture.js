@@ -685,6 +685,7 @@ export async function captureScreenshot(page, {
   strategy,
   preferredStrategy,
   animations,
+  includeData = true,
 } = {}) {
   const deadline = createDeadline(timeoutMs);
   const timeout = deadline.requestedTimeoutMs;
@@ -732,7 +733,7 @@ export async function captureScreenshot(page, {
     let data;
     try {
       image = await inspectPng(flow.captured.buffer, deadline);
-      data = await encodeBase64(flow.captured.buffer, deadline);
+      if (includeData !== false) data = await encodeBase64(flow.captured.buffer, deadline);
       await publishCapture(flow.captured, file, temp, deadline);
     } catch (error) {
       const success = [...attempts].reverse().find((attempt) => attempt.status === "success");
@@ -748,7 +749,7 @@ export async function captureScreenshot(page, {
       sessionId,
       out: file,
       url: safePageUrl(page),
-      data,
+      ...(includeData !== false ? { data } : {}),
       mimeType: "image/png",
       captureMode: flow.captureMode,
       fallbackUsed: attempts.length > 1,
