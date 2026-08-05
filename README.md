@@ -92,6 +92,56 @@ pursr diff https://example.com \
 pursr sweep ./plan.json   # see plans/ for an example
 ```
 
+## Recipes
+
+### Visual diff
+
+Capture a reference image once, then compare the current page against it after
+each UI change. The diff image and JSON summary are written to the paths you
+choose:
+
+```bash
+mkdir -p captures
+pursr shot https://example.com ./captures/reference.png
+pursr diff https://example.com ./captures/reference.png ./captures/current-diff.png
+```
+
+### CI sweep
+
+Keep a sweep plan in your repository and run it in CI. A sweep writes
+`sweep.json`, `sweep.junit.xml`, `sweep.github.json`, and `sweep.md` next to its
+captures. The extra Node check makes the job fail when any step fails, while
+the artifact upload preserves the screenshots and reports for review:
+
+```yaml
+- run: npm ci
+- run: npx playwright install --with-deps chromium
+- run: npx pursr sweep ./plans/visual-regression.json --out-dir ./artifacts/pursr
+- run: node -e "const s=require('./artifacts/pursr/sweep.json'); if (s.steps.some(step => !step.ok)) process.exit(1)"
+- uses: actions/upload-artifact@v4
+  if: always()
+  with:
+    name: pursr-sweep
+    path: artifacts/pursr
+```
+
+### MCP server
+
+Add pursr to an MCP client when an agent needs persistent browser sessions,
+screenshots, or diagnostics. The server uses the Chrome-compatible browser and
+`playwright-core` already installed in the host environment:
+
+```json
+{
+  "mcpServers": {
+    "pursr": {
+      "command": "npx",
+      "args": ["--yes", "pursr-mcp"]
+    }
+  }
+}
+```
+
 ## Features
 
 | Feature | Description | CLI flag |
